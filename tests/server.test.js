@@ -15,9 +15,13 @@ function start(opts = {}) {
     Log: [['When', 'Who', 'What']],
     ...(opts.tabs || {}),
   };
-  const gas = makeGas({ botToken: TOKEN, now: NOW, tabs, telegramStatus: opts.telegramStatus || 200 });
+  // Start the way the owner does: setup() makes the tabs, then rows are typed in (Sheets may convert them).
+  const gas = makeGas({ botToken: TOKEN, now: NOW, tabs: {}, telegramStatus: opts.telegramStatus || 200, lockBusy: !!opts.lockBusy });
   const ctx = loadGs(['Rules.gs', 'Auth.gs', 'Code.gs'], gas.globals);
   ctx.nowDate = () => new Date(NOW.getTime());
+  ctx.setup();
+  Object.keys(tabs).forEach((name) => tabs[name].slice(1).forEach((r) => gas.sheetObj(name).appendRow(r)));
+  gas.state.events.length = 0;
   const call = (tgId, action, args = {}, initData) => {
     const id = initData !== undefined ? initData : initDataFor({ id: tgId, username: 'u' + tgId }, TOKEN, Math.floor(NOW.getTime() / 1000) - 10);
     const out = ctx.doPost({ postData: { contents: JSON.stringify({ initData: id, action, ...args }) } });
@@ -208,4 +212,47 @@ test('admins lists linked callsigns for the add-admin choice', () => {
   const r = call(3, 'admins');
   assert.equal(r.ok, true);
   assert.deepEqual(r.linked, ['HAWK', 'VIPER', 'MAMBA', 'OSPREY']);
+});
+
+test('callsigns that look like numbers stay as typed', () => {
+  const { gas, call } = start({ tabs: {
+    Crew: [['Callsign', 'Telegram ID', 'Telegram username'], ['HAWK', '1', 'hawk'], ['007', '9', 'bond'], ['0800', '', '']],
+    Admins: [['Callsign'], ['007']],
+  } });
+  const who = call(9, 'whoami');
+  assert.equal(who.callsign, '007');
+  assert.equal(who.isAdmin, true);
+  call(1, 'pick', { date: '2026-12-05' });
+  call(9, 'pick', { date: '2026-12-05' });
+  assert.deepEqual(row(gas, '2026-12-05'), ['2026-12-05', 'HAWK', '007']);
+  assert.equal(call(77, 'link', { callsign: '0800' }).callsign, '0800');
+  assert.deepEqual(gas.sheet('Crew').find((c) => c[0] === '0800'), ['0800', '77', 'u77']);
+});
+
+test('Sheet changes are saved before the lock opens', () => {
+  const { gas, call } = start();
+  call(1, 'pick', { date: '2026-12-05' });
+  const ev = gas.state.events;
+  const lastWrite = ev.lastIndexOf('write');
+  const flush = ev.lastIndexOf('flush');
+  const release = ev.lastIndexOf('release');
+  assert.ok(lastWrite < flush && flush < release, ev.join(' '));
+});
+
+test('Telegram messages go out after the lock opens', () => {
+  const { gas, call } = start();
+  call(1, 'pick', { date: '2026-12-05' });
+  call(2, 'pick', { date: '2026-12-05' });
+  gas.state.events.length = 0;
+  const r = call(1, 'drop', { date: '2026-12-05' });
+  assert.match(r.message, /They got a Telegram message/);
+  const ev = gas.state.events;
+  assert.ok(ev.indexOf('release') >= 0 && ev.indexOf('release') < ev.indexOf('send'), ev.join(' '));
+});
+
+test('a busy lock gives a clear message', () => {
+  const { call } = start({ lockBusy: true });
+  const r = call(1, 'pick', { date: '2026-12-05' });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'BDO Picker is busy. Try again in a moment.');
 });

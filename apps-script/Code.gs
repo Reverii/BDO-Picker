@@ -6,6 +6,7 @@
 // Script Properties: BOT_TOKEN = the token @BotFather gave you.
 
 var TZ = 'Asia/Singapore';
+var OUTBOX = []; // Telegram messages waiting to be sent once the lock is released
 var HEADERS = {
   Days: ['Date', 'BDO', 'Queue'],
   Crew: ['Callsign', 'Telegram ID', 'Telegram username'],
@@ -21,6 +22,7 @@ function doGet() {
 
 function doPost(e) {
   var out;
+  OUTBOX = [];
   try {
     var req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var token = PropertiesService.getScriptProperties().getProperty('BOT_TOKEN');
@@ -46,11 +48,14 @@ function setup() {
     var sh = ss.getSheetByName(name);
     if (sh) return;
     sh = ss.insertSheet(name);
+    // Plain text everywhere, so Sheets doesn't turn dates, Telegram IDs or callsigns like 007 into
+    // dates or numbers. Set before the headers go in.
+    HEADERS[name].forEach(function (h, i) {
+      var col = String.fromCharCode(65 + i);
+      sh.getRange(col + ':' + col).setNumberFormat('@');
+    });
     sh.getRange(1, 1, 1, HEADERS[name].length).setValues([HEADERS[name]]).setFontWeight('bold');
     sh.setFrozenRows(1);
-    // Keep dates and Telegram IDs as plain text so Sheets doesn't turn them into dates or numbers.
-    if (name === 'Days') sh.getRange('A:A').setNumberFormat('@');
-    if (name === 'Crew') sh.getRange('B:B').setNumberFormat('@');
   });
 }
 
@@ -60,7 +65,7 @@ function handle(req, user) {
   var action = String(req.action || '');
   if (action === 'whoami') return whoami(user);
   if (action === 'link') {
-    return withLock(function () {
+    return write(function () {
       var crew = linkCallsign(readCrew(), user.id, user.username, req.callsign);
       writeCrew(crew);
       log(normCall(req.callsign), 'linked Telegram account' + (user.username ? ' @' + user.username : ''));
@@ -72,17 +77,17 @@ function handle(req, user) {
   if (!me) throw new RuleError('NOT_LINKED_ME', 'Pick your callsign first.');
 
   if (action === 'month') return { days: daysInMonth(readDays(), req.month) };
-  if (action === 'pick') return withLock(function () { return pick(me, req.date); });
-  if (action === 'drop') return withLock(function () { return drop(me, req.date); });
+  if (action === 'pick') return write(function () { return pick(me, req.date); });
+  if (action === 'drop') return write(function () { return drop(me, req.date); });
 
   var adminActions = ['setDay', 'admins', 'addAdmin', 'removeMe'];
   if (adminActions.indexOf(action) < 0) throw new RuleError('BAD_ACTION', 'Unknown request.');
   if (readAdmins().indexOf(me) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
 
   if (action === 'admins') return adminsData();
-  if (action === 'setDay') return withLock(function () { return changeDay(me, req.date, !!req.on); });
+  if (action === 'setDay') return write(function () { return changeDay(me, req.date, !!req.on); });
   if (action === 'addAdmin') {
-    return withLock(function () {
+    return write(function () {
       var admins = addAdmin(readAdmins(), readCrew(), req.callsign);
       var added = normCall(req.callsign);
       writeAdmins(admins);
@@ -91,7 +96,7 @@ function handle(req, user) {
       return adminsData();
     });
   }
-  return withLock(function () {
+  return write(function () {
     writeAdmins(removeSelf(readAdmins(), me));
     log(me, 'removed themselves as admin');
     return adminsData();
@@ -137,9 +142,15 @@ function drop(me, date) {
   if (r.result === 'dropped') {
     log(me, 'dropped ' + name + (r.promoted ? ', ' + r.promoted + ' moved up' : ''));
     if (r.promoted) {
-      var told = notify(r.promoted, "You're now BDO on " + name + '. ' + me + ' dropped the day, so you moved up from first in the queue.');
-      message = r.promoted + ' moved up to BDO.' + (told ? ' They got a Telegram message.' : '') +
-        (r.day.queue.length ? ' Everyone else in the queue moved up one place.' : '');
+      notify(r.promoted, "You're now BDO on " + name + '. ' + me + ' dropped the day, so you moved up from first in the queue.');
+      var rest = r.day.queue.length;
+      return {
+        day: r.day,
+        finish: function (told) {
+          return r.promoted + ' moved up to BDO.' + (told[r.promoted] ? ' They got a Telegram message.' : '') +
+            (rest ? ' Everyone else in the queue moved up one place.' : '');
+        },
+      };
     } else {
       message = 'You dropped ' + name + '. It is open again.';
     }
@@ -261,12 +272,29 @@ function today() {
 
 function withLock(fn) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
   try {
-    return fn();
+    lock.waitLock(10000);
+  } catch (e) {
+    throw new RuleError('BUSY', 'BDO Picker is busy. Try again in a moment.');
+  }
+  try {
+    var result = fn();
+    SpreadsheetApp.flush(); // save the writes before anyone else can read the Sheet
+    return result;
   } finally {
     lock.releaseLock();
   }
+}
+
+// A change to the Sheet: done under the lock; Telegram messages go out after the lock is released.
+function write(fn) {
+  var data = withLock(fn);
+  var told = sendQueued();
+  if (data && data.finish) {
+    data.message = data.finish(told);
+    delete data.finish;
+  }
+  return data;
 }
 
 // HMAC-SHA256 for Auth.gs. Apps Script works in Java bytes (-128..127); Auth.gs uses 0..255.
@@ -278,25 +306,34 @@ function gasHmac(key, msg) {
   return sig.map(function (b) { return (b + 256) % 256; });
 }
 
-// Sends a Telegram message to a callsign. Returns true if Telegram accepted it.
-// It only works once that person has allowed the bot to message them (the page asks on first use).
+// Queues a Telegram message to a callsign; write() sends it once the lock is released.
 function notify(callsign, text) {
   var row = readCrew().filter(function (c) { return c.callsign === normCall(callsign); })[0];
-  var ok = false;
-  if (row && row.telegramId) {
-    try {
-      var token = PropertiesService.getScriptProperties().getProperty('BOT_TOKEN');
-      var res = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify({ chat_id: row.telegramId, text: text }),
-        muteHttpExceptions: true,
-      });
-      ok = res.getResponseCode() === 200;
-    } catch (e) {
-      ok = false;
+  OUTBOX.push({ callsign: normCall(callsign), chatId: row ? row.telegramId : '', text: text });
+}
+
+// Sends the queued messages. Returns { CALLSIGN: true/false } (true = Telegram accepted it).
+// Delivery only works once that person has allowed the bot to message them (the page asks on first use).
+function sendQueued() {
+  var told = {};
+  var token = PropertiesService.getScriptProperties().getProperty('BOT_TOKEN');
+  OUTBOX.splice(0).forEach(function (m) {
+    var ok = false;
+    if (m.chatId) {
+      try {
+        var res = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify({ chat_id: m.chatId, text: m.text }),
+          muteHttpExceptions: true,
+        });
+        ok = res.getResponseCode() === 200;
+      } catch (e) {
+        ok = false;
+      }
     }
-  }
-  if (!ok) log('BDO Picker', 'message to ' + normCall(callsign) + ' not delivered');
-  return ok;
+    if (!ok) log('BDO Picker', 'message to ' + m.callsign + ' not delivered');
+    told[m.callsign] = ok;
+  });
+  return told;
 }
