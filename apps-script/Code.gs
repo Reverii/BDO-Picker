@@ -7,6 +7,7 @@
 
 var TZ = 'Asia/Singapore';
 var OUTBOX = []; // Telegram messages waiting to be sent once the lock is released
+var MEMO = {};   // tabs already read in this request (each tab is read at most once)
 var HEADERS = {
   Days: ['Date', 'BDO', 'Queue'],
   Crew: ['Callsign', 'Telegram ID', 'Telegram username'],
@@ -23,6 +24,7 @@ function doGet() {
 function doPost(e) {
   var out;
   OUTBOX = [];
+  MEMO = {};
   try {
     var req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var token = PropertiesService.getScriptProperties().getProperty('BOT_TOKEN');
@@ -63,13 +65,14 @@ function setup() {
 
 function handle(req, user) {
   var action = String(req.action || '');
+  if (action === 'init') return initData(user);
   if (action === 'whoami') return whoami(user);
   if (action === 'link') {
     return write(function () {
-      var crew = linkCallsign(readCrew(), user.id, user.username, req.callsign);
+      var crew = linkCallsign(readCrew(true), user.id, user.username, req.callsign);
       writeCrew(crew);
       log(normCall(req.callsign), 'linked Telegram account' + (user.username ? ' @' + user.username : ''));
-      return whoami(user);
+      return initData(user);
     });
   }
 
@@ -109,6 +112,26 @@ function whoami(user) {
   var data = { linked: !!me, callsign: me, isAdmin: !!me && readAdmins().indexOf(me) >= 0 };
   if (!me) data.crew = crew.map(function (c) { return { callsign: c.callsign, taken: !!c.telegramId }; });
   return data;
+}
+
+// Everything the page needs when it opens: who you are, every BDO day from the start of this
+// month on, and (for admins) the admin list.
+function initData(user) {
+  var data = whoami(user);
+  if (!data.linked) return data;
+  data.days = upcoming(readDays());
+  if (data.isAdmin) {
+    var a = adminsData();
+    data.admins = a.admins;
+    data.linkedCallsigns = a.linked;
+    data.lastChange = a.lastChange;
+  }
+  return data;
+}
+
+function upcoming(days) {
+  var start = today().slice(0, 7) + '-01';
+  return days.filter(function (d) { return d.date >= start; });
 }
 
 function findDay(days, date) {
@@ -172,7 +195,7 @@ function changeDay(me, date, on) {
       notify(cs, name + ' is no longer needed as a BDO day, so it has been taken off your days.');
     });
   }
-  return { days: daysInMonth(r.days, String(date).slice(0, 7)) };
+  return { days: upcoming(r.days) };
 }
 
 function adminsData() {
@@ -202,6 +225,12 @@ function rowsOf(name) {
   return sheet(name).getDataRange().getValues().slice(1);
 }
 
+// Reads a tab once per request. `fresh` forces a new read (used under the lock).
+function memo(name, fresh, read) {
+  if (fresh || !(name in MEMO)) MEMO[name] = read();
+  return MEMO[name];
+}
+
 function rewrite(name, rows) {
   var sh = sheet(name);
   var width = HEADERS[name].length;
@@ -216,6 +245,10 @@ function cellDate(v) {
 }
 
 function readDays() {
+  return memo('Days', false, readDaysNow);
+}
+
+function readDaysNow() {
   return rowsOf('Days').filter(function (r) { return String(r[0]).trim() !== ''; }).map(function (r) {
     return {
       date: cellDate(r[0]),
@@ -226,6 +259,7 @@ function readDays() {
 }
 
 function writeDays(days) {
+  MEMO.Days = days;
   rewrite('Days', days.map(function (d) { return [d.date, d.bdo, d.queue.join(', ')]; }));
 }
 
@@ -233,13 +267,16 @@ function daysInMonth(days, month) {
   return days.filter(function (d) { return d.date.slice(0, 7) === String(month); });
 }
 
-function readCrew() {
-  return rowsOf('Crew').filter(function (r) { return normCall(r[0]); }).map(function (r) {
-    return { callsign: normCall(r[0]), telegramId: String(r[1] || '').trim(), username: String(r[2] || '') };
+function readCrew(fresh) {
+  return memo('Crew', fresh, function () {
+    return rowsOf('Crew').filter(function (r) { return normCall(r[0]); }).map(function (r) {
+      return { callsign: normCall(r[0]), telegramId: String(r[1] || '').trim(), username: String(r[2] || '') };
+    });
   });
 }
 
 function writeCrew(crew) {
+  MEMO.Crew = crew;
   rewrite('Crew', crew.map(function (c) { return [c.callsign, c.telegramId, c.username]; }));
 }
 
@@ -249,10 +286,13 @@ function callsignOf(crew, telegramId) {
 }
 
 function readAdmins() {
-  return rowsOf('Admins').map(function (r) { return normCall(r[0]); }).filter(Boolean);
+  return memo('Admins', false, function () {
+    return rowsOf('Admins').map(function (r) { return normCall(r[0]); }).filter(Boolean);
+  });
 }
 
 function writeAdmins(admins) {
+  MEMO.Admins = admins;
   rewrite('Admins', admins.map(function (a) { return [a]; }));
 }
 
@@ -277,6 +317,10 @@ function withLock(fn) {
   } catch (e) {
     throw new RuleError('BUSY', 'BDO Picker is busy. Try again in a moment.');
   }
+  // Re-read what others may have changed while we waited (Crew stays: only linking changes it,
+  // and linking reads it fresh).
+  delete MEMO.Days;
+  delete MEMO.Admins;
   try {
     var result = fn();
     SpreadsheetApp.flush(); // save the writes before anyone else can read the Sheet

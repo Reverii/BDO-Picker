@@ -12,7 +12,7 @@
     screen: 'loading', fatal: '',
     me: '', isAdmin: false, crew: [], pickCs: '',
     tab: 'pick', month: '', days: [], sel: '',
-    msg: '', msgKind: 'ok', busy: false,
+    msg: '', msgKind: 'ok', busy: false, pending: '',
     admins: [], linked: [], lastChange: '', addCs: ''
   };
 
@@ -40,6 +40,12 @@
     var p = parts(m + '-01');
     var d = new Date(Date.UTC(p[0], p[1] - 1 + n, 1));
     return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1);
+  }
+  function monthDays() { return S.days.filter(function (d) { return d.date.slice(0, 7) === S.month; }); }
+  function defaultSel() {
+    var t = todayStr();
+    var next = monthDays().filter(function (d) { return d.date >= t; })[0];
+    return next ? next.date : '';
   }
   function dayOf(date) { return S.days.filter(function (d) { return d.date === date; })[0] || null; }
   function onDay(day) { return !!day && (day.bdo === S.me || day.queue.indexOf(S.me) >= 0); }
@@ -109,37 +115,25 @@
       return render();
     }
     S.month = todayStr().slice(0, 7);
-    api('whoami').then(applyWho).catch(function (e) { S.screen = 'fatal'; S.fatal = e.message; render(); });
+    // One request gets everything: who you are, all BDO days from this month on, and the admin list.
+    api('init').then(applyInit).catch(function (e) { S.screen = 'fatal'; S.fatal = e.message; render(); });
   }
 
-  function applyWho(who) {
-    S.me = who.callsign || '';
-    S.isAdmin = !!who.isAdmin;
-    if (!who.linked) {
-      S.crew = who.crew || [];
+  function applyInit(d) {
+    S.me = d.callsign || '';
+    S.isAdmin = !!d.isAdmin;
+    if (!d.linked) {
+      S.crew = d.crew || [];
       S.screen = 'welcome';
       return render();
     }
     S.screen = 'main';
-    return loadMonth();
-  }
-
-  function loadMonth() {
+    S.days = d.days || [];
+    S.admins = d.admins || [];
+    S.linked = d.linkedCallsigns || [];
+    S.lastChange = d.lastChange || '';
+    if (!dayOf(S.sel)) S.sel = defaultSel();
     render();
-    return api('month', { month: S.month }).then(function (res) {
-      S.days = res.days;
-      var t = todayStr();
-      var next = S.days.filter(function (d) { return d.date >= t; })[0];
-      if (!dayOf(S.sel)) S.sel = next ? next.date : '';
-      render();
-    }).catch(function (e) { say('err', e.message); render(); });
-  }
-
-  function loadAdmins() {
-    return api('admins').then(function (res) {
-      S.admins = res.admins; S.linked = res.linked || []; S.lastChange = res.lastChange || '';
-      render();
-    }).catch(function (e) { say('err', e.message); render(); });
   }
 
   function applyTheme() {
@@ -154,22 +148,19 @@
 
   var actions = {
     sel: function (el) { S.sel = el.getAttribute('data-date'); S.msg = ''; render(); },
-    month: function (el) { S.month = shiftMonth(S.month, Number(el.getAttribute('data-v'))); S.sel = ''; S.msg = ''; loadMonth(); },
-    tab: function (el) {
-      S.tab = el.getAttribute('data-v'); S.msg = '';
-      render();
-      if (S.tab === 'planner') loadAdmins();
-    },
+    month: function (el) { S.month = shiftMonth(S.month, Number(el.getAttribute('data-v'))); S.sel = defaultSel(); S.msg = ''; render(); },
+    tab: function (el) { S.tab = el.getAttribute('data-v'); S.msg = ''; render(); },
     action: function () {
       var day = dayOf(S.sel);
       if (!day) return;
       var what = onDay(day) ? 'drop' : 'pick';
+      S.pending = day.date; // shows "Saving…" straight away
       busy(function () {
         return api(what, { date: day.date }).then(function (res) {
           S.days = S.days.map(function (d) { return d.date === res.day.date ? res.day : d; });
           say('ok', res.message);
         });
-      });
+      }).then(function () { S.pending = ''; render(); });
     },
     toggle: function (el) {
       var date = el.getAttribute('data-date');
@@ -191,7 +182,7 @@
       busy(function () {
         return askWriteAccess().then(function () { return api('link', { callsign: S.pickCs }); }).then(function (who) {
           S.msg = '';
-          return applyWho(who);
+          return applyInit(who);
         });
       });
     },
@@ -308,6 +299,7 @@
         else { cls += ' taken'; tag = day.bdo; label += ', BDO ' + day.bdo + ', ' + day.queue.length + ' in queue'; }
         if (date < t) cls += ' past';
         if (date === S.sel) cls += ' sel';
+        if (date === S.pending) tag = 'SAVING…';
       }
       return '<button type="button" class="' + cls + '" data-act="sel" data-date="' + date + '" aria-label="' + esc(label) + '"' +
         (date === S.sel ? ' aria-pressed="true"' : '') + (disabled ? ' disabled' : '') + '><span class="n">' + n + '</span><span class="t">' + esc(tag) + '</span></button>';
@@ -322,7 +314,7 @@
   function panel() {
     var day = dayOf(S.sel);
     if (!day) {
-      var none = S.days.length ? 'Tap a highlighted day to see who has it.' : 'The planner hasn\'t set any BDO days this month yet.';
+      var none = monthDays().length ? 'Tap a highlighted day to see who has it.' : 'The planner hasn\'t set any BDO days this month yet.';
       return '<section id="panel" class="card"><span class="hint">' + none + '</span></section>';
     }
     var queue = day.queue.length
@@ -347,18 +339,20 @@
   }
 
   function myDays() {
-    var mine = S.days.filter(onDay).map(function (d) {
+    var t = todayStr();
+    var mine = S.days.filter(function (d) { return d.date >= t && onDay(d); }).map(function (d) {
       var at = d.queue.indexOf(S.me);
       return '<span class="chip">' + shortDay(d.date) + ' · ' + (d.bdo === S.me ? 'BDO' : 'queue ' + (at + 1)) + '</span>';
     });
-    return '<div style="display:flex;flex-direction:column;gap:6px"><span class="label">My days this month</span>' +
+    return '<div style="display:flex;flex-direction:column;gap:6px"><span class="label">My days</span>' +
       '<div id="mine" class="chips">' + (mine.join('') || '<span class="hint">No days yet</span>') + '</div></div>';
   }
 
   function footer() {
     var day = dayOf(S.sel);
     var label = 'Pick a day', cls = 'main', disabled = !day || S.busy;
-    if (day) {
+    if (S.pending) { label = 'Saving…'; disabled = true; }
+    else if (day) {
       if (day.date < todayStr()) { label = 'This day has passed'; disabled = true; }
       else if (day.bdo === S.me) { label = 'Drop this day'; cls += ' danger'; }
       else if (day.queue.indexOf(S.me) >= 0) { label = 'Leave the queue'; cls += ' danger'; }
@@ -370,10 +364,11 @@
 
   function planner() {
     var t = todayStr();
-    var filled = S.days.filter(function (d) { return d.bdo; }).length;
-    var counts = '<div class="counts"><div><b>' + S.days.length + '</b><span>BDO days</span></div>' +
+    var days = monthDays();
+    var filled = days.filter(function (d) { return d.bdo; }).length;
+    var counts = '<div class="counts"><div><b>' + days.length + '</b><span>BDO days</span></div>' +
       '<div><b>' + filled + '</b><span>have a BDO</span></div>' +
-      '<div><b class="warn">' + (S.days.length - filled) + '</b><span>still open</span></div></div>';
+      '<div><b class="warn">' + (days.length - filled) + '</b><span>still open</span></div></div>';
     var cal = calendar(function (date, n) {
       var day = dayOf(date);
       var past = date < t;
@@ -383,7 +378,7 @@
         ' aria-pressed="' + !!day + '" aria-label="' + esc(label) + '"' + (past || S.busy ? ' disabled' : '') + '>' +
         '<span class="n">' + n + '</span><span class="t">' + tag + '</span></button>';
     });
-    var who = S.days.map(function (d) {
+    var who = days.map(function (d) {
       var w = !d.bdo ? 'Open' : d.bdo + (d.queue.length ? ' · queue: ' + d.queue.join(', ') : ' · queue empty');
       return '<div><span class="d">' + shortDay(d.date) + '</span><span class="w' + (d.bdo ? '' : ' open') + '">' + esc(w) + '</span></div>';
     }).join('');

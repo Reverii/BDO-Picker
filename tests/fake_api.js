@@ -16,6 +16,7 @@
       { date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER'] },
       { date: '2026-12-12', bdo: '', queue: [] },
       { date: '2026-12-20', bdo: 'OSPREY', queue: [] },
+      { date: '2027-01-09', bdo: 'MAMBA', queue: [] },
     ],
     lastChange: 'OSPREY added MAMBA as admin · 20 Nov',
   };
@@ -29,14 +30,24 @@
     if (!m) d.crew = state.crew.map(function (c) { return { callsign: c.callsign, taken: !!c.telegramId }; });
     return d;
   }
+  function upcoming() { var start = today.slice(0, 7) + '-01'; return state.days.filter(function (d) { return d.date >= start; }); }
+  function linkedCallsigns() { return state.crew.filter(function (c) { return c.telegramId; }).map(function (c) { return c.callsign; }); }
+  function init() {
+    var d = whoami();
+    if (!d.linked) return d;
+    d.days = upcoming();
+    if (d.isAdmin) { d.admins = state.admins; d.linkedCallsigns = linkedCallsigns(); d.lastChange = state.lastChange; }
+    return d;
+  }
   function month(m) { return state.days.filter(function (d) { return d.date.slice(0, 7) === m; }); }
   function find(date) {
     for (var i = 0; i < state.days.length; i++) if (state.days[i].date === date) return i;
     throw new RuleError('NOT_SET', "The planner hasn't set that day as a BDO day.");
   }
   function run(action, args) {
+    if (action === 'init') return init();
     if (action === 'whoami') return whoami();
-    if (action === 'link') { state.crew = linkCallsign(state.crew, ME_ID, 'mamba_ops', args.callsign); return whoami(); }
+    if (action === 'link') { state.crew = linkCallsign(state.crew, ME_ID, 'mamba_ops', args.callsign); return init(); }
     var m = me();
     if (!m) throw new RuleError('NOT_LINKED_ME', 'Pick your callsign first.');
     if (action === 'month') return { days: month(args.month) };
@@ -49,7 +60,7 @@
       return { day: d.day, message: d.result === 'left' ? 'You left the queue for ' + fmtDay(args.date) + '.' : d.promoted ? d.promoted + ' moved up to BDO.' : 'You dropped ' + fmtDay(args.date) + '. It is open again.' };
     }
     if (state.admins.indexOf(m) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
-    if (action === 'setDay') { state.days = setDay(state.days, args.date, args.on, today).days; return { days: month(args.date.slice(0, 7)) }; }
+    if (action === 'setDay') { state.days = setDay(state.days, args.date, args.on, today).days; return { days: upcoming() }; }
     if (action === 'admins') return { admins: state.admins, linked: state.crew.filter(function (c) { return c.telegramId; }).map(function (c) { return c.callsign; }), lastChange: state.lastChange };
     if (action === 'addAdmin') { state.admins = addAdmin(state.admins, state.crew, args.callsign); state.lastChange = m + ' added ' + normCall(args.callsign) + ' as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }
     if (action === 'removeMe') { state.admins = removeSelf(state.admins, m); state.lastChange = m + ' removed themselves as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }

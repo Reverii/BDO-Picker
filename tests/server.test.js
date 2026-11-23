@@ -256,3 +256,62 @@ test('a busy lock gives a clear message', () => {
   assert.equal(r.ok, false);
   assert.equal(r.error, 'BDO Picker is busy. Try again in a moment.');
 });
+
+const reads = (gas, name) => gas.state.events.filter((e) => e === 'read:' + name).length;
+
+test('init gives an admin everything in one call', () => {
+  const { call } = start({ tabs: { Days: [['Date', 'BDO', 'Queue'], ['2026-11-28', 'HAWK', ''], ['2026-12-05', 'HAWK', 'VIPER'], ['2027-01-02', '', '']] } });
+  const r = call(3, 'init');
+  assert.equal(r.ok, true);
+  assert.equal(r.linked, true);
+  assert.equal(r.callsign, 'MAMBA');
+  assert.equal(r.isAdmin, true);
+  assert.deepEqual(r.days.map((d) => d.date), ['2026-12-05', '2027-01-02'], 'from the start of this month onwards');
+  assert.deepEqual(r.admins, ['MAMBA']);
+  assert.deepEqual(r.linkedCallsigns, ['HAWK', 'VIPER', 'MAMBA', 'OSPREY']);
+  assert.equal(typeof r.lastChange, 'string');
+});
+
+test('init for a non-admin has no admin data', () => {
+  const { call } = start();
+  const r = call(1, 'init');
+  assert.equal(r.isAdmin, false);
+  assert.equal(r.days.length, 2);
+  assert.equal(r.admins, undefined);
+});
+
+test('init for an unlinked user lists the crew and no days', () => {
+  const { call } = start();
+  const r = call(77, 'init');
+  assert.equal(r.linked, false);
+  assert.ok(r.crew.length > 0);
+  assert.equal(r.days, undefined);
+});
+
+test('link answers with the same data as init', () => {
+  const { call } = start();
+  const r = call(77, 'link', { callsign: 'RAVEN' });
+  assert.equal(r.linked, true);
+  assert.equal(r.days.length, 2);
+});
+
+test('setDay answers with all upcoming days', () => {
+  const { call } = start({ tabs: { Days: [['Date', 'BDO', 'Queue'], ['2026-12-05', '', ''], ['2027-01-02', '', '']] } });
+  const r = call(3, 'setDay', { date: '2026-12-08', on: true });
+  assert.deepEqual(r.days.map((d) => d.date), ['2026-12-05', '2026-12-08', '2027-01-02']);
+});
+
+test('a request reads each tab only once', () => {
+  const { gas, call } = start();
+  call(1, 'pick', { date: '2026-12-05' });
+  call(2, 'pick', { date: '2026-12-05' });
+  gas.state.events.length = 0;
+  call(1, 'drop', { date: '2026-12-05' }); // promotes VIPER and messages them
+  assert.equal(reads(gas, 'Crew'), 1);
+  assert.equal(reads(gas, 'Days'), 1);
+  gas.state.events.length = 0;
+  call(3, 'init');
+  assert.equal(reads(gas, 'Crew'), 1);
+  assert.equal(reads(gas, 'Admins'), 1);
+  assert.equal(reads(gas, 'Days'), 1);
+});

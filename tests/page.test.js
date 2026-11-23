@@ -150,3 +150,50 @@ test('fits at 360 px', async () => {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 360));
   await page.close();
 });
+
+test('opening the app makes one request', async () => {
+  const page = await open();
+  await page.getByText('December 2026').waitFor();
+  await page.locator('#cal [data-date="2026-12-12"]', { hasText: 'OPEN' }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.FAKE.calls.map((c) => c.action)), ['init']);
+  await page.close();
+});
+
+test('changing month needs no request', async () => {
+  const page = await open();
+  await page.getByText('December 2026').waitFor();
+  await page.getByRole('button', { name: 'Next month' }).click();
+  await page.getByText('January 2027').waitFor();
+  await page.locator('#cal [data-date="2027-01-09"]', { hasText: 'BDO' }).waitFor();
+  await page.getByRole('button', { name: 'Previous month' }).click();
+  await page.getByText('December 2026').waitFor();
+  assert.equal(await calls(page), 1);
+  await page.close();
+});
+
+test('my days lists every upcoming day, not just this month', async () => {
+  const page = await open();
+  await page.locator('#mine', { hasText: 'Sat 9 Jan · BDO' }).waitFor();
+  await page.close();
+});
+
+test('saving shows straight away while waiting for the answer', async () => {
+  const page = await open({ delay: 600 });
+  await page.locator('#cal [data-date="2026-12-12"]', { hasText: 'OPEN' }).waitFor();
+  await page.locator('#cal [data-date="2026-12-12"]').click();
+  await page.locator('#action').click();
+  assert.equal((await page.locator('#action').innerText()).trim(), 'Saving…');
+  assert.match(await page.locator('#cal [data-date="2026-12-12"]').innerText(), /SAVING/);
+  await page.locator('#mine', { hasText: 'Sat 12 Dec · BDO' }).waitFor();
+  await page.close();
+});
+
+test('the planner tab opens without a request', async () => {
+  const page = await open();
+  await page.getByText('December 2026').waitFor();
+  await page.locator('#tab-planner').click();
+  await page.getByRole('button', { name: 'Remove me' }).waitFor();
+  assert.match(await page.locator('#admins').innerText(), /MAMBA/);
+  assert.equal(await calls(page), 1);
+  await page.close();
+});

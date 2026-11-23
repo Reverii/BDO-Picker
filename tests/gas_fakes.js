@@ -45,7 +45,7 @@ function makeSheet(name, rows, events) {
     data,
     textCols,
     getName() { return name; },
-    getDataRange() { trim(); return range(1, 1, Math.max(1, data.length), width()); },
+    getDataRange() { trim(); events.push('read:' + name); return range(1, 1, Math.max(1, data.length), width()); },
     getLastRow() { trim(); return data.length; },
     getRange(a, c, nr, nc) {
       if (typeof a === 'string') {
