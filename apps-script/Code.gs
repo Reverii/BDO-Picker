@@ -83,7 +83,7 @@ function handle(req, user) {
   if (action === 'pick') return write(function () { return pick(me, req.date); });
   if (action === 'drop') return write(function () { return drop(me, req.date); });
 
-  var adminActions = ['setDay', 'admins', 'addAdmin', 'removeMe', 'assign', 'unassign'];
+  var adminActions = ['setDay', 'admins', 'addAdmin', 'removeMe', 'assign', 'unassign', 'addCrew', 'removeCrew', 'findGroup', 'announce'];
   if (adminActions.indexOf(action) < 0) throw new RuleError('BAD_ACTION', 'Unknown request.');
   if (readAdmins().indexOf(me) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
 
@@ -91,6 +91,17 @@ function handle(req, user) {
   if (action === 'setDay') return write(function () { return changeDay(me, req.date, !!req.on); });
   if (action === 'assign') return write(function () { return assign(me, req.date, req.callsign, req.as === 'bdo' ? 'bdo' : 'queue'); });
   if (action === 'unassign') return write(function () { return unassign(me, req.date, req.callsign); });
+  if (action === 'addCrew') {
+    return write(function () {
+      var crew = addCrew(readCrew(true), req.callsign);
+      writeCrew(crew);
+      log(me, 'added ' + normCall(req.callsign) + ' to the crew');
+      return { crewList: crewList(), message: normCall(req.callsign) + ' added to the crew.' };
+    });
+  }
+  if (action === 'removeCrew') return write(function () { return removeCrew(me, req.callsign); });
+  if (action === 'findGroup') return findGroup();
+  if (action === 'announce') return announce(me, String(req.month || ''), req.note, !!req.preview);
   if (action === 'addAdmin') {
     return write(function () {
       var admins = addAdmin(readAdmins(), readCrew(), req.callsign);
@@ -128,6 +139,8 @@ function initData(user) {
     data.linkedCallsigns = a.linked;
     data.lastChange = a.lastChange;
     data.crewCallsigns = readCrew().map(function (c) { return c.callsign; });
+    data.crewList = crewList();
+    data.groupTitle = prop('GROUP_TITLE');
   }
   return data;
 }
@@ -230,6 +243,93 @@ function unassign(me, date, callsign) {
     return { day: r.day, message: cs + ' is off ' + name + '. ' + r.promoted + ' moved up to BDO.' };
   }
   return { day: r.day, message: cs + ' is off ' + name + '.' };
+}
+
+function crewList() {
+  return readCrew().map(function (c) { return { callsign: c.callsign, linked: !!c.telegramId }; });
+}
+
+function removeCrew(me, callsign) {
+  var cs = normCall(callsign);
+  var r = removeCrewMember(readCrew(true), readAdmins(), readDays(), cs, me, today());
+  writeCrew(r.crew);
+  writeAdmins(r.admins);
+  writeDays(r.days);
+  log(me, 'removed ' + cs + ' from the crew' + (r.upcoming ? ' (was on ' + r.upcoming + ' upcoming day' + (r.upcoming === 1 ? '' : 's') + ')' : ''));
+  r.promoted.forEach(function (p) {
+    notify(p.callsign, "You're now BDO on " + fmtDay(p.date) + '. ' + cs + ' was taken off the crew list, so you moved up from first in the queue.');
+  });
+  return {
+    crewList: crewList(),
+    admins: r.admins,
+    days: upcoming(r.days),
+    message: cs + ' removed from the crew' + (r.upcoming ? ' and taken off ' + r.upcoming + ' upcoming day' + (r.upcoming === 1 ? '' : 's') + '.' : '.'),
+  };
+}
+
+// ---------- the Telegram group ----------
+
+function prop(key) {
+  return PropertiesService.getScriptProperties().getProperty(key) || '';
+}
+
+function telegram(method, payload) {
+  var url = 'https://api.telegram.org/bot' + prop('BOT_TOKEN') + '/' + method;
+  var opts = { muteHttpExceptions: true };
+  if (payload) {
+    opts.method = 'post';
+    opts.contentType = 'application/json';
+    opts.payload = JSON.stringify(payload);
+  }
+  var res = UrlFetchApp.fetch(url, opts);
+  var body = {};
+  try { body = JSON.parse(res.getContentText()); } catch (e) { body = {}; }
+  return { ok: res.getResponseCode() === 200 && body.ok !== false, result: body.result };
+}
+
+// Looks through what the bot has recently seen for a group chat (someone sends /bdo there).
+function findGroup() {
+  var r = telegram('getUpdates');
+  var updates = (r.ok && r.result) || [];
+  for (var i = updates.length - 1; i >= 0; i--) {
+    var u = updates[i];
+    var msg = u.message || u.channel_post || u.my_chat_member || {};
+    var chat = msg.chat;
+    if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {
+      var props = PropertiesService.getScriptProperties();
+      props.setProperty('GROUP_CHAT_ID', String(chat.id));
+      props.setProperty('GROUP_TITLE', chat.title || 'the group');
+      log('BDO Picker', 'connected to group ' + (chat.title || chat.id));
+      return { groupTitle: chat.title || 'the group' };
+    }
+  }
+  throw new RuleError('NO_GROUP', "I couldn't find the group. Add the bot to the group, send /bdo there, then tap Find group again.");
+}
+
+function appLink() {
+  var name = prop('BOT_USERNAME');
+  if (!name) {
+    var me = telegram('getMe');
+    name = (me.ok && me.result && me.result.username) || '';
+    if (name) PropertiesService.getScriptProperties().setProperty('BOT_USERNAME', name);
+  }
+  return 'https://t.me/' + name + '/' + (prop('APP_NAME') || 'pick');
+}
+
+function announce(me, month, note, preview) {
+  var groupId = prop('GROUP_CHAT_ID');
+  if (!groupId) throw new RuleError('NO_GROUP', 'Connect the group first: tap Find group.');
+  var text = announceText(month, daysInMonth(readDays(), month), note);
+  if (preview) return { text: text };
+  var sent = telegram('sendMessage', {
+    chat_id: groupId,
+    text: text,
+    reply_markup: { inline_keyboard: [[{ text: 'Open BDO Picker', url: appLink() }]] },
+  });
+  if (!sent.ok) throw new RuleError('POST_FAILED', "Telegram didn't accept the message. Check the bot is still in the group, then tap Find group again.");
+  var p = month.split('-').map(Number);
+  log(me, 'posted ' + MONTH_NAMES[p[1] - 1] + ' ' + p[0] + ' to the group');
+  return { message: 'Posted to ' + (prop('GROUP_TITLE') || 'the group') + '.' };
 }
 
 function changeDay(me, date, on) {

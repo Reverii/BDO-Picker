@@ -140,3 +140,60 @@ function removeFromDay(day, callsign, today) {
   var r = dropDay(day, cs, today);
   return { day: r.day, promoted: r.promoted };
 }
+
+var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// Planner adds a callsign to the crew list. Commas are refused: the Queue column uses them.
+function addCrew(crew, callsign) {
+  var cs = normCall(callsign);
+  if (!cs || cs.length > 20 || cs.indexOf(',') >= 0) {
+    throw new RuleError('BAD_CALLSIGN', 'A callsign needs 1 to 20 characters and no commas.');
+  }
+  if (crew.some(function (c) { return normCall(c.callsign) === cs; })) {
+    throw new RuleError('DUPLICATE', cs + ' is already on the crew list.');
+  }
+  return crew.map(function (c) { return { callsign: normCall(c.callsign), telegramId: String(c.telegramId || ''), username: c.username || '' }; })
+    .concat([{ callsign: cs, telegramId: '', username: '' }]);
+}
+
+// Planner removes a callsign: out of the crew and admins, and off every day from today on
+// (taking off a BDO moves their queue up). Past days keep their history.
+function removeCrewMember(crew, admins, days, callsign, me, today) {
+  var cs = normCall(callsign);
+  if (cs === normCall(me)) throw new RuleError('SELF', "You can't remove your own callsign. Use Remove me under Admins to step down.");
+  if (!crew.some(function (c) { return normCall(c.callsign) === cs; })) throw new RuleError('UNKNOWN', cs + ' is not on the crew list.');
+  var promoted = [];
+  var upcoming = 0;
+  var newDays = days.map(function (day) {
+    var d = copyDay(day);
+    if (d.date < today || (d.bdo !== cs && d.queue.indexOf(cs) < 0)) return d;
+    upcoming++;
+    var r = dropDay(d, cs, today);
+    if (r.promoted) promoted.push({ date: d.date, callsign: r.promoted });
+    return r.day;
+  });
+  return {
+    crew: crew.filter(function (c) { return normCall(c.callsign) !== cs; }),
+    admins: admins.map(normCall).filter(function (a) { return a !== cs; }),
+    days: newDays,
+    promoted: promoted,
+    upcoming: upcoming,
+  };
+}
+
+// The group message for one month ('YYYY-MM'); `days` are that month's BDO days.
+function announceText(month, days, note) {
+  var p = String(month).split('-').map(Number);
+  var title = MONTH_NAMES[p[1] - 1] + ' ' + p[0];
+  if (!days.length) throw new RuleError('NO_DAYS', 'There are no BDO days in ' + title + ' yet.');
+  var open = days.filter(function (d) { return !d.bdo; }).length;
+  var lines = days.map(function (d) {
+    var parts = fmtDay(d.date).split(' ');
+    return '• ' + parts[0].slice(0, 3) + ' ' + parts[1] + ' ' + parts[2] + ': ' + (d.bdo || 'open');
+  });
+  var text = 'BDO dates for ' + title + ' are up.\n\n' +
+    days.length + (days.length === 1 ? ' day needs' : ' days need') + ' a BDO, ' + open + ' still open:\n' +
+    lines.join('\n') + '\n\nFirst come, first served. Pick yours in BDO Picker.';
+  if (note && String(note).trim()) text += '\n\n' + String(note).trim();
+  return text;
+}

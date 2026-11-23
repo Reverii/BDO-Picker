@@ -14,7 +14,8 @@
     tab: 'pick', month: '', days: [], sel: '',
     msg: '', msgKind: 'ok', busy: false, pending: '',
     admins: [], linked: [], lastChange: '', addCs: '',
-    crewAll: [], psel: '', assignCs: ''
+    crewAll: [], psel: '', assignCs: '',
+    crewList: [], newCrew: '', groupTitle: '', note: '', preview: ''
   };
 
   // ---------- small helpers ----------
@@ -133,6 +134,8 @@
     S.admins = d.admins || [];
     S.linked = d.linkedCallsigns || [];
     S.crewAll = d.crewCallsigns || [];
+    S.crewList = d.crewList || [];
+    S.groupTitle = d.groupTitle || '';
     S.lastChange = d.lastChange || '';
     if (!dayOf(S.sel)) S.sel = defaultSel();
     render();
@@ -150,7 +153,7 @@
 
   var actions = {
     sel: function (el) { S.sel = el.getAttribute('data-date'); S.msg = ''; render(); },
-    month: function (el) { S.month = shiftMonth(S.month, Number(el.getAttribute('data-v'))); S.sel = defaultSel(); S.msg = ''; render(); },
+    month: function (el) { S.month = shiftMonth(S.month, Number(el.getAttribute('data-v'))); S.sel = defaultSel(); S.msg = ''; S.preview = ''; render(); },
     tab: function (el) { S.tab = el.getAttribute('data-v'); S.msg = ''; render(); },
     action: function () {
       var day = dayOf(S.sel);
@@ -215,6 +218,61 @@
         });
       });
     },
+    addCrew: function () {
+      var cs = S.newCrew;
+      busy(function () {
+        return api('addCrew', { callsign: cs }).then(function (res) {
+          setCrew(res.crewList);
+          S.newCrew = '';
+          say('ok', res.message);
+        });
+      });
+    },
+    removeCrew: function (el) {
+      var cs = el.getAttribute('data-cs');
+      var t = todayStr();
+      var n = S.days.filter(function (d) { return d.date >= t && (d.bdo === cs || d.queue.indexOf(cs) >= 0); }).length;
+      var q = 'Remove ' + cs + ' from the crew?' + (n ? ' ' + cs + ' is on ' + n + ' upcoming day' + (n === 1 ? ' and will be taken off it.' : 's and will be taken off them.') : '');
+      ask(q).then(function (ok) {
+        if (!ok) return;
+        busy(function () {
+          return api('removeCrew', { callsign: cs }).then(function (res) {
+            setCrew(res.crewList);
+            S.admins = res.admins;
+            S.days = res.days;
+            if (S.assignCs === cs) S.assignCs = '';
+            say('ok', res.message);
+          });
+        });
+      });
+    },
+    findGroup: function () {
+      busy(function () {
+        return api('findGroup').then(function (res) {
+          S.groupTitle = res.groupTitle;
+          say('ok', 'Connected to ' + res.groupTitle + '.');
+        });
+      });
+    },
+    previewAnnounce: function () {
+      busy(function () {
+        return api('announce', { month: S.month, note: S.note, preview: true }).then(function (res) {
+          S.preview = res.text;
+          S.msg = '';
+        });
+      });
+    },
+    postAnnounce: function () {
+      ask('Post ' + monthTitle(S.month) + ' to ' + S.groupTitle + '?').then(function (ok) {
+        if (!ok) return;
+        busy(function () {
+          return api('announce', { month: S.month, note: S.note, preview: false }).then(function (res) {
+            S.preview = '';
+            say('ok', res.message);
+          });
+        });
+      });
+    },
     link: function () {
       if (!S.pickCs) return;
       busy(function () {
@@ -253,6 +311,17 @@
     var el = ev.target.closest('[data-act]');
     if (!el || el.disabled || !actions[el.getAttribute('data-act')]) return;
     actions[el.getAttribute('data-act')](el);
+  });
+  function setCrew(list) {
+    S.crewList = list;
+    S.crewAll = list.map(function (c) { return c.callsign; });
+    S.linked = list.filter(function (c) { return c.linked; }).map(function (c) { return c.callsign; });
+  }
+
+  // Typing must not redraw the page (that would lose the cursor), so text boxes only update state.
+  app.addEventListener('input', function (ev) {
+    if (ev.target.id === 'new-crew') S.newCrew = ev.target.value;
+    if (ev.target.id === 'announce-note') { S.note = ev.target.value; }
   });
   app.addEventListener('change', function (ev) {
     if (ev.target.name === 'callsign') { S.pickCs = ev.target.value; render(); }
@@ -422,9 +491,9 @@
       var w = !d.bdo ? 'Open' : d.bdo + (d.queue.length ? ' · queue: ' + d.queue.join(', ') : ' · queue empty');
       return '<div><span class="d">' + shortDay(d.date) + '</span><span class="w' + (d.bdo ? '' : ' open') + '">' + esc(w) + '</span></div>';
     }).join('');
-    return counts + cal + dayPanel() + status() +
+    return counts + cal + dayPanel() + status() + groupCard() +
       '<section class="card list"><span class="label">Who has what</span>' + (who || '<div class="hint">No BDO days this month yet.</div>') + '</section>' +
-      admins();
+      crewCard() + admins();
   }
 
   var ICON_X = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -459,6 +528,39 @@
         '<span class="hint" style="font-size:13px">Make BDO moves the current BDO to number 1 in the queue. Everyone affected gets a Telegram message.</span>' +
         '<button type="button" class="pill" style="align-self:flex-start;margin-top:4px" data-act="removeDay"' + (S.busy ? ' disabled' : '') + '>Remove this BDO day</button>') +
       '</section>';
+  }
+
+  function groupCard() {
+    var off = S.busy ? ' disabled' : '';
+    if (!S.groupTitle) {
+      return '<section id="group" class="card" style="display:flex;flex-direction:column;gap:8px"><span class="label">Post to the Telegram group</span>' +
+        '<span class="hint" style="font-size:14px">Once only: add the bot to your group, send <b>/bdo</b> in the group, then tap Find group.</span>' +
+        '<button type="button" class="btn" style="align-self:flex-start" data-act="findGroup"' + off + '>Find group</button></section>';
+    }
+    return '<section id="group" class="card" style="display:flex;flex-direction:column;gap:8px"><span class="label">Post to the Telegram group</span>' +
+      '<div class="qi"><span class="grow">Connected to <b>' + esc(S.groupTitle) + '</b></span>' +
+      '<button type="button" class="pill quiet" data-act="findGroup"' + off + '>Change</button></div>' +
+      '<label for="announce-note" class="hint" style="font-size:13px">Note to add at the end (optional)</label>' +
+      '<textarea id="announce-note" rows="2">' + esc(S.note) + '</textarea>' +
+      '<div class="addrow" style="padding-top:0"><button type="button" class="btn ghost grow" data-act="previewAnnounce"' + off + '>Preview message</button>' +
+      '<button type="button" class="btn grow" data-act="postAnnounce"' + off + '>Post to group</button></div>' +
+      (S.preview ? '<div id="announce-preview" class="preview">' + esc(S.preview) + '</div>' : '<span class="hint" style="font-size:13px">Posts ' + monthTitle(S.month) + "'s BDO days with an Open BDO Picker button.</span>") +
+      '</section>';
+  }
+
+  function crewCard() {
+    var rows = S.crewList.map(function (c) {
+      var mine = c.callsign === S.me;
+      return '<div class="admin"><span class="name">' + esc(c.callsign) + (mine ? ' (you)' : '') + '</span>' +
+        '<span class="hint" style="font-size:13px">' + (c.linked ? 'linked' : 'not linked yet') + '</span>' +
+        (mine ? '<span style="width:36px"></span>' : '<button type="button" class="x" data-act="removeCrew" data-cs="' + esc(c.callsign) + '" aria-label="Remove ' + esc(c.callsign) + ' from the crew"' + (S.busy ? ' disabled' : '') + '>' + ICON_X + '</button>') +
+        '</div>';
+    }).join('');
+    return '<section class="card"><span class="label">Crew</span><div id="crew">' + (rows || '<p class="hint">No crew yet.</p>') + '</div>' +
+      '<div class="addrow"><label for="new-crew" class="sr">New callsign</label>' +
+      '<input id="new-crew" class="text" autocomplete="off" autocapitalize="characters" placeholder="New callsign" value="' + esc(S.newCrew) + '">' +
+      '<button type="button" class="btn" data-act="addCrew"' + (S.busy ? ' disabled' : '') + '>Add crew</button></div>' +
+      '<p class="hint" style="font-size:12px;margin:8px 0 0">"Not linked yet" means they haven\'t opened BDO Picker.</p></section>';
   }
 
   function admins() {

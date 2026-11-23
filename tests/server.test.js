@@ -16,7 +16,7 @@ function start(opts = {}) {
     ...(opts.tabs || {}),
   };
   // Start the way the owner does: setup() makes the tabs, then rows are typed in (Sheets may convert them).
-  const gas = makeGas({ botToken: TOKEN, now: NOW, tabs: {}, telegramStatus: opts.telegramStatus || 200, lockBusy: !!opts.lockBusy });
+  const gas = makeGas({ botToken: TOKEN, now: NOW, tabs: {}, telegramStatus: opts.telegramStatus || 200, lockBusy: !!opts.lockBusy, updates: opts.updates || [] });
   const ctx = loadGs(['Rules.gs', 'Auth.gs', 'Code.gs'], gas.globals);
   ctx.nowDate = () => new Date(NOW.getTime());
   ctx.setup();
@@ -372,4 +372,71 @@ test('init gives admins the whole crew list for putting people on days', () => {
   const { call } = start();
   assert.deepEqual(call(3, 'init').crewCallsigns, ['HAWK', 'VIPER', 'MAMBA', 'OSPREY', 'RAVEN', 'KESTREL']);
   assert.equal(call(1, 'init').crewCallsigns, undefined);
+});
+
+test('admin adds crew', () => {
+  const { gas, call } = start();
+  const r = call(3, 'addCrew', { callsign: ' falcon ' });
+  assert.equal(r.ok, true);
+  assert.ok(gas.sheet('Crew').some((c) => c[0] === 'FALCON' && c[1] === ''));
+  assert.deepEqual(r.crewList.find((c) => c.callsign === 'FALCON'), { callsign: 'FALCON', linked: false });
+  assert.equal(call(3, 'addCrew', { callsign: 'hawk' }).error, 'HAWK is already on the crew list.');
+  assert.equal(call(1, 'addCrew', { callsign: 'X1' }).error, 'Only the BDO planner can do that.');
+});
+
+test('admin removes crew: off upcoming days, queue moves up, promoted person told', () => {
+  const { gas, call } = start({ tabs: {
+    Days: [['Date', 'BDO', 'Queue'], ['2026-11-28', 'VIPER', ''], ['2026-12-05', 'HAWK', 'VIPER'], ['2026-12-12', 'VIPER', 'OSPREY']],
+    Admins: [['Callsign'], ['MAMBA'], ['VIPER']],
+  } });
+  const r = call(3, 'removeCrew', { callsign: 'VIPER' });
+  assert.equal(r.ok, true);
+  assert.ok(!gas.sheet('Crew').some((c) => c[0] === 'VIPER'));
+  assert.deepEqual(gas.sheet('Admins'), [['Callsign'], ['MAMBA']]);
+  assert.deepEqual(gas.sheet('Days').slice(1), [['2026-11-28', 'VIPER', ''], ['2026-12-05', 'HAWK', ''], ['2026-12-12', 'OSPREY', '']]);
+  assert.deepEqual(gas.state.sent, [{ chat_id: '4', text: "You're now BDO on Saturday 12 Dec. VIPER was taken off the crew list, so you moved up from first in the queue." }]);
+  assert.equal(r.message, 'VIPER removed from the crew and taken off 2 upcoming days.');
+  assert.deepEqual(r.days.map((d) => d.date), ['2026-12-05', '2026-12-12']);
+  assert.equal(call(3, 'removeCrew', { callsign: 'MAMBA' }).ok, false);
+});
+
+test('find group saves the group the bot last heard /bdo in', () => {
+  const updates = [
+    { update_id: 1, message: { chat: { id: 555, type: 'private', first_name: 'M' }, text: '/start' } },
+    { update_id: 2, message: { chat: { id: -100123, type: 'supergroup', title: '121 SQN BDO' }, text: '/bdo@bdo_test_bot' } },
+  ];
+  const { gas, call } = start({ updates });
+  const r = call(3, 'findGroup');
+  assert.equal(r.ok, true);
+  assert.equal(r.groupTitle, '121 SQN BDO');
+  assert.equal(gas.state.props.GROUP_CHAT_ID, '-100123');
+  assert.equal(call(3, 'init').groupTitle, '121 SQN BDO');
+});
+
+test('find group explains what to do when it finds nothing', () => {
+  const { call } = start({ updates: [] });
+  assert.equal(call(3, 'findGroup').error, "I couldn't find the group. Add the bot to the group, send /bdo there, then tap Find group again.");
+});
+
+test('announce: preview sends nothing, post goes to the group with an app button', () => {
+  const { gas, call } = start({ updates: [{ update_id: 2, message: { chat: { id: -100123, type: 'group', title: 'BDO' }, text: '/bdo' } }] });
+  call(3, 'findGroup');
+  const p = call(3, 'announce', { month: '2026-12', note: '', preview: true });
+  assert.equal(p.ok, true);
+  assert.match(p.text, /^BDO dates for December 2026 are up\./);
+  assert.equal(gas.state.sent.length, 0);
+  const r = call(3, 'announce', { month: '2026-12', note: 'Thanks all.' });
+  assert.equal(r.ok, true);
+  assert.equal(r.message, 'Posted to BDO.');
+  assert.equal(gas.state.sent.length, 1);
+  assert.equal(gas.state.sent[0].chat_id, '-100123');
+  assert.match(gas.state.sent[0].text, /Thanks all\.$/);
+  assert.deepEqual(gas.state.sent[0].reply_markup, { inline_keyboard: [[{ text: 'Open BDO Picker', url: 'https://t.me/bdo_test_bot/pick' }]] });
+  assert.ok(gas.sheet('Log').some((l) => l[2] === 'posted December 2026 to the group'));
+});
+
+test('announce without a group, or by a non-admin, is refused', () => {
+  const { call } = start();
+  assert.equal(call(3, 'announce', { month: '2026-12' }).error, 'Connect the group first: tap Find group.');
+  assert.equal(call(1, 'announce', { month: '2026-12' }).error, 'Only the BDO planner can do that.');
 });

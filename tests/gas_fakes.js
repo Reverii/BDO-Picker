@@ -61,9 +61,9 @@ function makeSheet(name, rows, events) {
   };
 }
 
-function makeGas({ botToken = '123456:TEST-token', now = new Date('2026-12-01T02:00:00Z'), tabs = {}, telegramStatus = 200, lockBusy = false } = {}) {
+function makeGas({ botToken = '123456:TEST-token', now = new Date('2026-12-01T02:00:00Z'), tabs = {}, telegramStatus = 200, lockBusy = false, updates = [], botUsername = 'bdo_test_bot' } = {}) {
   const sheets = {};
-  const state = { sent: [], lockCalls: 0, released: 0, telegramStatus, fetchUrls: [], events: [] };
+  const state = { sent: [], lockCalls: 0, released: 0, telegramStatus, fetchUrls: [], events: [], updates, props: { BOT_TOKEN: botToken } };
   Object.keys(tabs).forEach((n) => { sheets[n] = makeSheet(n, tabs[n], state.events); });
   const ss = {
     getSheetByName(n) { return sheets[n] || null; },
@@ -78,7 +78,7 @@ function makeGas({ botToken = '123456:TEST-token', now = new Date('2026-12-01T02
   const globals = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, getActive: () => ss, flush() { state.events.push('flush'); } },
     LockService: { getScriptLock: () => ({ waitLock() { state.lockCalls++; if (lockBusy) throw new Error('Lock timeout: another process was holding the lock for too long.'); state.events.push('lock'); }, releaseLock() { state.released++; state.events.push('release'); } }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === 'BOT_TOKEN' ? botToken : null) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in state.props ? state.props[k] : null), setProperty(k, v) { state.props[k] = String(v); return this; } }) },
     ContentService: {
       MimeType: { JSON: 'JSON', TEXT: 'TEXT' },
       createTextOutput(text) { return { text, mime: null, setMimeType(m) { this.mime = m; return this; }, getContent() { return text; } }; },
@@ -86,10 +86,17 @@ function makeGas({ botToken = '123456:TEST-token', now = new Date('2026-12-01T02
     UrlFetchApp: {
       fetch(url, opts) {
         state.fetchUrls.push(url);
+        const reply = (code, obj) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(obj) });
+        if (/\/getUpdates/.test(url)) return reply(200, { ok: true, result: state.updates });
+        if (/\/getMe/.test(url)) return reply(200, { ok: true, result: { username: botUsername } });
         state.events.push('send');
         const body = JSON.parse(opts.payload);
-        if (state.telegramStatus === 200) state.sent.push({ chat_id: String(body.chat_id), text: body.text });
-        return { getResponseCode: () => state.telegramStatus, getContentText: () => '{}' };
+        if (state.telegramStatus === 200) {
+          const m = { chat_id: String(body.chat_id), text: body.text };
+          if (body.reply_markup) m.reply_markup = body.reply_markup;
+          state.sent.push(m);
+        }
+        return reply(state.telegramStatus, { ok: state.telegramStatus === 200 });
       },
     },
     Utilities: {

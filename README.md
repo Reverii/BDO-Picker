@@ -90,9 +90,19 @@ The repo is public and holds no names or dates. Callsigns and Telegram IDs stay 
 2. Open the **Planner** tab and tap a few dates.
 3. Post the link in the squadron group.
 
+### 6. Let the bot post in the group (optional)
+
+1. Add the bot to the squadron group (group info > Add members > search the bot's username).
+2. Send `/bdo` in the group.
+3. In BDO Picker, open **Planner** and tap **Find group**. It should say "Connected to" your group's name.
+4. From then on, **Preview message** and **Post to group** on the Planner tab post the month on screen.
+
+The **Open BDO Picker** button in the post points to `t.me/<your bot>/pick`. If you gave the Mini App a short name
+other than `pick` in step 4, add a script property `APP_NAME` with that short name.
+
 ## Looking after it
 
-- **Changing the crew list:** add or remove rows in the **Crew** tab.
+- **Changing the crew list:** use the **Crew** section on the Planner tab (or edit the **Crew** tab).
 - **Someone linked the wrong callsign:** in **Crew**, clear their Telegram ID and username (columns B
   and C). They pick again the next time they open BDO Picker.
 - **Admins:** use the Planner tab, or edit the **Admins** tab directly if you ever get locked out.

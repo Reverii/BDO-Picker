@@ -250,3 +250,36 @@ test('the planner day panel fits a phone', async () => {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 360));
   await page.close();
 });
+
+test('planner adds and removes crew', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  await page.locator('#crew', { hasText: 'VIPER' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Remove MAMBA from the crew' }).count(), 0, 'no remove button on your own callsign');
+  await page.locator('#new-crew').fill('falcon');
+  await page.getByRole('button', { name: 'Add crew' }).click();
+  await page.locator('#crew', { hasText: 'FALCON' }).waitFor();
+  await page.getByRole('button', { name: 'Remove VIPER from the crew' }).click();
+  await page.locator('#status', { hasText: 'VIPER removed from the crew' }).waitFor();
+  assert.equal(await page.evaluate(() => window.LAST_CONFIRM), 'Remove VIPER from the crew? VIPER is on 1 upcoming day and will be taken off it.');
+  assert.doesNotMatch(await page.locator('#crew').innerText(), /VIPER/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('planner connects the group, previews and posts the month', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  await page.getByRole('button', { name: 'Find group' }).click();
+  await page.locator('#group', { hasText: 'Connected to 121 SQN' }).waitFor();
+  await page.locator('#announce-note').fill('Thanks all.');
+  await page.getByRole('button', { name: 'Preview message' }).click();
+  await page.locator('#announce-preview', { hasText: 'BDO dates for December 2026 are up.' }).waitFor();
+  assert.match(await page.locator('#announce-preview').innerText(), /Thanks all\.$/);
+  await page.getByRole('button', { name: 'Post to group' }).click();
+  await page.locator('#status', { hasText: 'Posted to 121 SQN.' }).waitFor();
+  const posts = await page.evaluate(() => window.FAKE.calls.filter((c) => c.action === 'announce' && !c.args.preview).map((c) => c.args));
+  assert.deepEqual(posts, [{ month: '2026-12', note: 'Thanks all.', preview: false }]);
+  assert.match(await page.evaluate(() => window.LAST_CONFIRM), /Post December 2026 to 121 SQN\?/);
+  await page.close();
+});

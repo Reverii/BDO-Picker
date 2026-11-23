@@ -157,7 +157,19 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
     </div>
 
     <div class="card">
-      <h3>3. See who has what</h3>
+      <h3>3. Post the month to the group</h3>
+      <p><b>Once only, connect the group:</b> add the BDO Picker bot to your Telegram group, send <b>/bdo</b> in the group, then tap <b class="btn">Find group</b> on the Planner tab.</p>
+      <p><b>Each month:</b></p>
+      <ol>
+        <li>Set the month's BDO days, and stay on that month with ‹ ›.</li>
+        <li>Add a note if you like (it goes at the end of the message).</li>
+        <li>Tap <b>Preview message</b> to check it, then <b class="btn">Post to group</b>.</li>
+      </ol>
+      <p style="margin-top:10px">The bot posts every BDO day of the month, shows which are open and who has the rest, and adds an <b>Open BDO Picker</b> button.</p>
+    </div>
+
+    <div class="card">
+      <h3>4. See who has what</h3>
       <ul>
         <li>The three counts at the top: <b>BDO days</b>, <b>have a BDO</b> and <b>still open</b> (in red) for the month on screen.</li>
         <li>On the calendar, <b>BDO +2</b> means a BDO plus two people queuing. <b>OPEN</b> means nobody yet.</li>
@@ -166,7 +178,17 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
     </div>
 
     <div class="card">
-      <h3>4. Pass on or share planner rights</h3>
+      <h3>5. Add or remove crew</h3>
+      <ul>
+        <li>The <b>Crew</b> section lists every callsign. "Not linked yet" means they haven't opened BDO Picker.</li>
+        <li><b>Add:</b> type the callsign and tap <b class="btn">Add crew</b>.</li>
+        <li><b>Remove:</b> tap the <b>×</b> next to them. If they're on upcoming days, the app asks first, then takes them off those days. The queue moves up, and anyone who becomes BDO gets a message. Past days keep their history.</li>
+        <li>Removing an admin also takes away their admin rights. To remove yourself, use <b>Remove me</b> under Admins.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>6. Pass on or share planner rights</h3>
       <ol>
         <li>Scroll to <b>Admins</b> at the bottom of the Planner tab.</li>
         <li>Pick a callsign and tap <b class="btn">Add admin</b>. They get a Telegram message. The person must have opened BDO Picker once first.</li>
@@ -176,10 +198,10 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
     </div>
 
     <div class="card">
-      <h3>5. Fixing things in the Google Sheet</h3>
+      <h3>7. Fixing things in the Google Sheet</h3>
       <p>Everything lives in the BDO Picker Google Sheet. The Sheet owner can fix anything by hand:</p>
       <ul>
-        <li><b>Crew tab:</b> add or remove callsigns in column A. To unlink someone who picked the wrong callsign, clear their Telegram ID and username (columns B and C). They pick again next time they open the app.</li>
+        <li><b>Crew tab:</b> the same list as the Crew section in the app. To unlink someone who picked the wrong callsign, clear their Telegram ID and username (columns B and C). They pick again next time they open the app.</li>
         <li><b>Admins tab:</b> one callsign per row. Use this if you're ever locked out.</li>
         <li><b>Days tab:</b> one row per BDO date: the date (YYYY-MM-DD), the BDO, and the queue (callsigns separated by commas, in order).</li>
         <li><b>Log tab:</b> every pick, drop, day change and admin change, with who and when. "message to X not delivered" means that person needs to tap <b>Start</b> in the bot's chat.</li>

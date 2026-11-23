@@ -169,3 +169,41 @@ test('remove from day: BDO promotes the queue, queue member just leaves', () => 
   assert.equal(b.promoted, '');
   assert.equal(code(() => R.removeFromDay(d, 'RAVEN', today)), 'NOT_THERE');
 });
+
+test('addCrew adds a clean callsign and refuses bad ones', () => {
+  const crew = [{ callsign: 'HAWK', telegramId: '1', username: '' }];
+  const out = R.addCrew(crew, ' kestrel ');
+  assert.deepEqual([...out.map((c) => c.callsign)], ['HAWK', 'KESTREL']);
+  assert.equal(out[1].telegramId, '');
+  assert.equal(code(() => R.addCrew(crew, 'hawk')), 'DUPLICATE');
+  assert.equal(code(() => R.addCrew(crew, '  ')), 'BAD_CALLSIGN');
+  assert.equal(code(() => R.addCrew(crew, 'A,B')), 'BAD_CALLSIGN');
+  assert.equal(code(() => R.addCrew(crew, 'X'.repeat(21))), 'BAD_CALLSIGN');
+});
+
+test('removeCrewMember takes them off upcoming days and out of admins', () => {
+  const crew = [{ callsign: 'HAWK', telegramId: '1' }, { callsign: 'VIPER', telegramId: '2' }, { callsign: 'MAMBA', telegramId: '3' }];
+  const days = [
+    { date: '2026-11-28', bdo: 'VIPER', queue: [] },
+    { date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER', 'MAMBA'] },
+    { date: '2026-12-12', bdo: 'VIPER', queue: ['MAMBA'] },
+  ];
+  const r = R.removeCrewMember(crew, ['MAMBA', 'VIPER'], days, 'viper', 'MAMBA', today);
+  assert.deepEqual([...r.crew.map((c) => c.callsign)], ['HAWK', 'MAMBA']);
+  assert.deepEqual([...r.admins], ['MAMBA']);
+  assert.equal(r.days[0].bdo, 'VIPER', 'past days keep their history');
+  assert.deepEqual([...r.days[1].queue], ['MAMBA']);
+  assert.equal(r.days[2].bdo, 'MAMBA');
+  assert.deepEqual([...r.promoted.map((p) => p.date + ' ' + p.callsign)], ['2026-12-12 MAMBA']);
+  assert.equal(r.upcoming, 2);
+  assert.equal(code(() => R.removeCrewMember(crew, ['MAMBA'], days, 'MAMBA', 'MAMBA', today)), 'SELF');
+  assert.equal(code(() => R.removeCrewMember(crew, ['MAMBA'], days, 'NOBODY', 'MAMBA', today)), 'UNKNOWN');
+});
+
+test('announceText lists the month', () => {
+  const days = [{ date: '2027-01-02', bdo: '', queue: [] }, { date: '2027-01-03', bdo: 'HAWK', queue: ['VIPER'] }];
+  assert.equal(R.announceText('2027-01', days, 'Bring snacks.'),
+    'BDO dates for January 2027 are up.\n\n2 days need a BDO, 1 still open:\n• Sat 2 Jan: open\n• Sun 3 Jan: HAWK\n\nFirst come, first served. Pick yours in BDO Picker.\n\nBring snacks.');
+  assert.match(R.announceText('2027-01', days.slice(0, 1), ''), /^BDO dates for January 2027 are up\.\n\n1 day needs a BDO, 1 still open:\n• Sat 2 Jan: open\n\nFirst come/);
+  assert.equal(code(() => R.announceText('2027-02', [], '')), 'NO_DAYS');
+});

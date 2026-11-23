@@ -36,9 +36,10 @@
     var d = whoami();
     if (!d.linked) return d;
     d.days = upcoming();
-    if (d.isAdmin) { d.admins = state.admins; d.linkedCallsigns = linkedCallsigns(); d.lastChange = state.lastChange; d.crewCallsigns = state.crew.map(function (c) { return c.callsign; }); }
+    if (d.isAdmin) { d.admins = state.admins; d.linkedCallsigns = linkedCallsigns(); d.lastChange = state.lastChange; d.crewCallsigns = state.crew.map(function (c) { return c.callsign; }); d.crewList = crewList(); d.groupTitle = state.groupTitle; }
     return d;
   }
+  function crewList() { return state.crew.map(function (c) { return { callsign: c.callsign, linked: !!c.telegramId }; }); }
   function month(m) { return state.days.filter(function (d) { return d.date.slice(0, 7) === m; }); }
   function find(date) {
     for (var i = 0; i < state.days.length; i++) if (state.days[i].date === date) return i;
@@ -68,6 +69,18 @@
     if (action === 'unassign') {
       var u = find(args.date); var x = removeFromDay(state.days[u], args.callsign, today); state.days[u] = x.day;
       return { day: x.day, message: normCall(args.callsign) + ' is off ' + fmtDay(args.date) + '.' + (x.promoted ? ' ' + x.promoted + ' moved up to BDO.' : '') };
+    }
+    if (action === 'addCrew') { state.crew = addCrew(state.crew, args.callsign); return { crewList: crewList(), message: normCall(args.callsign) + ' added to the crew.' }; }
+    if (action === 'removeCrew') {
+      var rc = removeCrewMember(state.crew, state.admins, state.days, args.callsign, m, today);
+      state.crew = rc.crew; state.admins = rc.admins; state.days = rc.days;
+      return { crewList: crewList(), admins: state.admins, days: upcoming(), message: normCall(args.callsign) + ' removed from the crew.' };
+    }
+    if (action === 'findGroup') { state.groupTitle = '121 SQN'; return { groupTitle: state.groupTitle }; }
+    if (action === 'announce') {
+      if (!state.groupTitle) throw new RuleError('NO_GROUP', 'Connect the group first: tap Find group.');
+      var text = announceText(args.month, month(args.month), args.note);
+      return args.preview ? { text: text } : { message: 'Posted to ' + state.groupTitle + '.' };
     }
     if (action === 'admins') return { admins: state.admins, linked: state.crew.filter(function (c) { return c.telegramId; }).map(function (c) { return c.callsign; }), lastChange: state.lastChange };
     if (action === 'addAdmin') { state.admins = addAdmin(state.admins, state.crew, args.callsign); state.lastChange = m + ' added ' + normCall(args.callsign) + ' as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }
