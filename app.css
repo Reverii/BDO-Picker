@@ -131,3 +131,4 @@ input.text, textarea { flex: 1; min-width: 0; min-height: 44px; border-radius: 1
 textarea { width: 100%; resize: vertical; }
 .preview { white-space: pre-wrap; background: var(--bg); border-radius: 10px; padding: 12px; font-size: 14px; line-height: 1.5; }
 .pill.quiet { border-color: var(--line); color: var(--accent); }
+.help { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }

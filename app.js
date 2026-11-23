@@ -139,7 +139,47 @@
     S.lastChange = d.lastChange || '';
     if (!dayOf(S.sel)) S.sel = defaultSel();
     render();
+    startRefresh();
   }
+
+  // ---------- keeping the picks up to date ----------
+  // Quietly reloads when someone comes back to the app and once a minute while it's open.
+  // Skipped while a save is running or while a text box or list has focus.
+
+  var refreshing = false, refreshTimer = null;
+
+  function typing() {
+    var a = document.activeElement;
+    return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+  }
+
+  function refresh() {
+    if (S.screen !== 'main' || S.busy || refreshing || document.hidden || typing()) return;
+    refreshing = true;
+    api('init').then(function (d) {
+      if (S.busy || !d.linked) return;
+      S.days = d.days || [];
+      S.isAdmin = !!d.isAdmin;
+      if (!S.isAdmin) S.tab = 'pick';
+      S.admins = d.admins || [];
+      S.linked = d.linkedCallsigns || [];
+      S.lastChange = d.lastChange || '';
+      S.crewAll = d.crewCallsigns || [];
+      S.crewList = d.crewList || [];
+      S.groupTitle = d.groupTitle || '';
+      if (!dayOf(S.sel)) S.sel = defaultSel();
+      if (!dayOf(S.psel)) S.psel = '';
+      if (!typing()) render();
+    }).catch(function () { /* try again next time */ }).then(function () { refreshing = false; });
+  }
+
+  function startRefresh() {
+    if (refreshTimer) return;
+    refreshTimer = setInterval(refresh, window.BDO_REFRESH_MS || 60000);
+  }
+
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+  if (tg && tg.onEvent) { try { tg.onEvent('activated', refresh); } catch (e) { /* older Telegram */ } }
 
   function applyTheme() {
     var t = (tg && tg.themeParams) || {};
@@ -307,7 +347,15 @@
     }
   };
 
+  function openHelp() {
+    var url = new URL('guide.html', location.href).href;
+    if (tg && tg.openLink) { try { tg.openLink(url); return; } catch (e) { /* fall through */ } }
+    location.href = url;
+  }
+
   app.addEventListener('click', function (ev) {
+    var help = ev.target.closest('a[data-help]');
+    if (help) { ev.preventDefault(); return openHelp(); }
     var el = ev.target.closest('[data-act]');
     if (!el || el.disabled || !actions[el.getAttribute('data-act')]) return;
     actions[el.getAttribute('data-act')](el);
@@ -357,7 +405,7 @@
     }).join('');
     var user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
     return '<div class="content welcome">' +
-      '<div><h1>First time here</h1><p>Pick your callsign once. From then on, opening BDO Picker from Telegram knows it\'s you.</p></div>' +
+      '<div><h1>First time here</h1><p>Pick your callsign once. From then on, opening BDO Picker from Telegram knows it\'s you. <a href="guide.html" data-help class="help">Help</a></p></div>' +
       (user && user.username ? '<div class="card">Your Telegram account: <b>@' + esc(user.username) + '</b></div>' : '') +
       '<fieldset><legend class="label">Which callsign is yours?</legend>' + (rows || '<p class="hint">The crew list is empty. Ask the BDO planner to add callsigns.</p>') + '</fieldset>' +
       '<p class="hint">Callsign missing or already linked to someone else? Message the BDO planner to fix it.</p>' +
@@ -372,7 +420,8 @@
         '<button type="button" role="tab" id="tab-pick" data-act="tab" data-v="pick" aria-selected="' + (S.tab === 'pick') + '">Pick days</button>' +
         '<button type="button" role="tab" id="tab-planner" data-act="tab" data-v="planner" aria-selected="' + (S.tab === 'planner') + '">Planner</button></div>'
       : '';
-    var sub = S.tab === 'planner' ? 'Tap a date to add it, or a BDO day to manage it' : 'Signed in as ' + esc(S.me);
+    var sub = (S.tab === 'planner' ? 'Tap a date to add it, or a BDO day to manage it' : 'Signed in as ' + esc(S.me)) +
+      ' · <a href="guide.html" data-help class="help">Help</a>';
     return tabs + '<div class="monthbar"><div><div class="sub">' + sub + '</div><h1>' + monthTitle(S.month) + '</h1></div>' +
       '<div class="nav"><button type="button" class="round" data-act="month" data-v="-1" aria-label="Previous month">' + ICON_PREV + '</button>' +
       '<button type="button" class="round" data-act="month" data-v="1" aria-label="Next month">' + ICON_NEXT + '</button></div></div>';

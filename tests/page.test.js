@@ -22,17 +22,18 @@ test.before(async () => {
 });
 test.after(async () => { await browser.close(); server.close(); });
 
-async function open({ initData = 'test', linked = true, admin = true, delay = 0, width = 390 } = {}) {
+async function open({ initData = 'test', linked = true, admin = true, delay = 0, width = 390, refreshMs = 0 } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 844 } });
   page.setDefaultTimeout(5000);
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.route('https://telegram.org/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
-  await page.addInitScript(({ initData, linked, admin, delay }) => {
+  await page.addInitScript(({ initData, linked, admin, delay, refreshMs }) => {
     window.BDO_TODAY = '2026-12-01';
     window.FAKE_OPTS = { linked, admin, delay };
-    window.Telegram = { WebApp: { initData, themeParams: {}, ready() {}, expand() {}, requestWriteAccess(cb) { cb(true); }, showConfirm(msg, cb) { window.LAST_CONFIRM = msg; cb(true); } } };
-  }, { initData, linked, admin, delay });
+    window.Telegram = { WebApp: { initData, themeParams: {}, ready() {}, expand() {}, requestWriteAccess(cb) { cb(true); }, showConfirm(msg, cb) { window.LAST_CONFIRM = msg; cb(true); }, openLink(url) { window.OPENED = url; } } };
+    if (refreshMs) window.BDO_REFRESH_MS = refreshMs;
+  }, { initData, linked, admin, delay, refreshMs });
   // Rules.gs and the fake API load before app.js runs (app.js waits for DOMContentLoaded).
   await page.addInitScript({ content: fs.readFileSync(path.join(ROOT, 'apps-script/Rules.gs'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, 'fake_api.js'), 'utf8') });
   await page.goto(base);
@@ -282,4 +283,55 @@ test('planner connects the group, previews and posts the month', async () => {
   assert.deepEqual(posts, [{ month: '2026-12', note: 'Thanks all.', preview: false }]);
   assert.match(await page.evaluate(() => window.LAST_CONFIRM), /Post December 2026 to 121 SQN\?/);
   await page.close();
+});
+
+const comeBack = (page) => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+const inits = (page) => page.evaluate(() => window.FAKE.calls.filter((c) => c.action === 'init').length);
+
+test('coming back to the app shows other people\'s new picks', async () => {
+  const page = await open();
+  await page.locator('#cal [data-date="2026-12-12"]', { hasText: 'OPEN' }).waitFor();
+  await page.locator('#cal [data-date="2026-12-12"]').click();
+  await page.evaluate(() => { window.FAKE.state.days[1] = { date: '2026-12-12', bdo: 'HAWK', queue: [] }; });
+  await comeBack(page);
+  await page.locator('#cal [data-date="2026-12-12"]', { hasText: 'HAWK' }).waitFor();
+  assert.match(await page.locator('#panel').innerText(), /BDO\s*HAWK/, 'the selected day stays selected');
+  assert.equal(await inits(page), 2);
+  await page.close();
+});
+
+test('the app refreshes by itself while open', async () => {
+  const page = await open({ refreshMs: 150 });
+  await page.locator('#cal [data-date="2026-12-12"]', { hasText: 'OPEN' }).waitFor();
+  await page.evaluate(() => { window.FAKE.state.days[1] = { date: '2026-12-12', bdo: 'VIPER', queue: [] }; });
+  await page.locator('#cal [data-date="2026-12-12"]', { hasText: 'VIPER' }).waitFor();
+  await page.close();
+});
+
+test('no refresh while typing, and the planner keeps its place', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  await page.getByRole('button', { name: 'Next month' }).click();
+  await page.locator('#new-crew').fill('fal');
+  await comeBack(page);
+  await page.waitForTimeout(200);
+  assert.equal(await inits(page), 1, 'skipped while a text box has focus');
+  assert.equal(await page.locator('#new-crew').inputValue(), 'fal');
+  await page.locator('#new-crew').blur();
+  await comeBack(page);
+  await page.waitForFunction(() => window.FAKE.calls.filter((c) => c.action === 'init').length === 2);
+  await page.getByText('January 2027').waitFor();
+  assert.equal(await page.locator('#tab-planner').getAttribute('aria-selected'), 'true');
+  await page.close();
+});
+
+test('help opens the guide', async () => {
+  const page = await open();
+  await page.getByRole('link', { name: 'Help' }).click();
+  assert.match(await page.evaluate(() => window.OPENED), /\/guide\.html$/);
+  await page.close();
+  const first = await open({ linked: false });
+  await first.getByText('First time here').waitFor();
+  assert.equal(await first.getByRole('link', { name: 'Help' }).count(), 1);
+  await first.close();
 });
