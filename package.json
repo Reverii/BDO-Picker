@@ -1,0 +1,9 @@
+{
+  "name": "bdo-picker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Telegram Mini App for picking BDO duty dates",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  }
+}
