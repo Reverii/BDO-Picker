@@ -1,0 +1,68 @@
+// Browser-side stand-in for the Apps Script web app, for the page tests.
+// Needs Rules.gs loaded first. Options come from window.FAKE_OPTS: { linked, admin, delay }.
+(function () {
+  var o = window.FAKE_OPTS || {};
+  var ME_ID = '3';
+  var state = {
+    crew: [
+      { callsign: 'HAWK', telegramId: '1', username: 'hawk' },
+      { callsign: 'VIPER', telegramId: '2', username: 'viper' },
+      { callsign: 'MAMBA', telegramId: o.linked ? ME_ID : '', username: '' },
+      { callsign: 'OSPREY', telegramId: '4', username: 'osprey' },
+      { callsign: 'RAVEN', telegramId: '', username: '' },
+    ],
+    admins: o.admin === false ? ['OSPREY'] : ['MAMBA'],
+    days: [
+      { date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER'] },
+      { date: '2026-12-12', bdo: '', queue: [] },
+      { date: '2026-12-20', bdo: 'OSPREY', queue: [] },
+    ],
+    lastChange: 'OSPREY added MAMBA as admin · 20 Nov',
+  };
+  var today = window.BDO_TODAY || '2026-12-01';
+  window.FAKE = { calls: [], state: state };
+
+  function me() { var r = state.crew.filter(function (c) { return c.telegramId === ME_ID; })[0]; return r ? r.callsign : ''; }
+  function whoami() {
+    var m = me();
+    var d = { linked: !!m, callsign: m, isAdmin: !!m && state.admins.indexOf(m) >= 0 };
+    if (!m) d.crew = state.crew.map(function (c) { return { callsign: c.callsign, taken: !!c.telegramId }; });
+    return d;
+  }
+  function month(m) { return state.days.filter(function (d) { return d.date.slice(0, 7) === m; }); }
+  function find(date) {
+    for (var i = 0; i < state.days.length; i++) if (state.days[i].date === date) return i;
+    throw new RuleError('NOT_SET', "The planner hasn't set that day as a BDO day.");
+  }
+  function run(action, args) {
+    if (action === 'whoami') return whoami();
+    if (action === 'link') { state.crew = linkCallsign(state.crew, ME_ID, 'mamba_ops', args.callsign); return whoami(); }
+    var m = me();
+    if (!m) throw new RuleError('NOT_LINKED_ME', 'Pick your callsign first.');
+    if (action === 'month') return { days: month(args.month) };
+    if (action === 'pick') {
+      var i = find(args.date); var r = pickDay(state.days[i], m, today); state.days[i] = r.day;
+      return { day: r.day, message: r.result === 'bdo' ? 'You are BDO on ' + fmtDay(args.date) + '. Anyone who picks it after you joins the queue.' : r.day.bdo + ' got there first. You are number ' + r.position + ' in the queue for ' + fmtDay(args.date) + '.' };
+    }
+    if (action === 'drop') {
+      var j = find(args.date); var d = dropDay(state.days[j], m, today); state.days[j] = d.day;
+      return { day: d.day, message: d.result === 'left' ? 'You left the queue for ' + fmtDay(args.date) + '.' : d.promoted ? d.promoted + ' moved up to BDO.' : 'You dropped ' + fmtDay(args.date) + '. It is open again.' };
+    }
+    if (state.admins.indexOf(m) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
+    if (action === 'setDay') { state.days = setDay(state.days, args.date, args.on, today).days; return { days: month(args.date.slice(0, 7)) }; }
+    if (action === 'admins') return { admins: state.admins, linked: state.crew.filter(function (c) { return c.telegramId; }).map(function (c) { return c.callsign; }), lastChange: state.lastChange };
+    if (action === 'addAdmin') { state.admins = addAdmin(state.admins, state.crew, args.callsign); state.lastChange = m + ' added ' + normCall(args.callsign) + ' as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }
+    if (action === 'removeMe') { state.admins = removeSelf(state.admins, m); state.lastChange = m + ' removed themselves as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }
+    throw new RuleError('BAD_ACTION', 'Unknown request.');
+  }
+
+  window.BDO_FAKE_API = function (action, args) {
+    window.FAKE.calls.push({ action: action, args: args });
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        try { var data = run(action, args || {}); data.ok = true; resolve(JSON.parse(JSON.stringify(data))); }
+        catch (e) { resolve({ ok: false, error: e.message }); }
+      }, o.delay || 0);
+    });
+  };
+})();

@@ -202,3 +202,10 @@ test('every write is logged', () => {
   const log = gas.sheet('Log');
   assert.deepEqual(log[log.length - 1], ['2026-12-01 10:00', 'HAWK', 'picked Saturday 5 Dec (BDO)']);
 });
+
+test('admins lists linked callsigns for the add-admin choice', () => {
+  const { call } = start();
+  const r = call(3, 'admins');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.linked, ['HAWK', 'VIPER', 'MAMBA', 'OSPREY']);
+});

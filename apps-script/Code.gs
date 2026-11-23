@@ -175,7 +175,8 @@ function adminsData() {
       break;
     }
   }
-  return { admins: readAdmins(), lastChange: lastChange };
+  var linked = readCrew().filter(function (c) { return c.telegramId; }).map(function (c) { return c.callsign; });
+  return { admins: readAdmins(), linked: linked, lastChange: lastChange };
 }
 
 // ---------- Sheet access ----------
