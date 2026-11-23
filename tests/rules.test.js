@@ -122,3 +122,50 @@ test('fmtDay', () => {
   assert.equal(R.fmtDay('2026-12-05'), 'Saturday 5 Dec');
   assert.equal(R.fmtDay('2026-12-31'), 'Thursday 31 Dec');
 });
+
+test('assign as BDO moves the current BDO to the front of the queue', () => {
+  const r = R.assignDay({ date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER'] }, 'osprey', 'bdo', today);
+  assert.equal(r.day.bdo, 'OSPREY');
+  assert.deepEqual([...r.day.queue], ['HAWK', 'VIPER']);
+  assert.equal(r.displaced, 'HAWK');
+  assert.equal(r.position, 0);
+});
+
+test('assign as BDO on an open day', () => {
+  const r = R.assignDay(open(), 'OSPREY', 'bdo', today);
+  assert.equal(r.day.bdo, 'OSPREY');
+  assert.equal(r.displaced, '');
+});
+
+test('assign a queued person as BDO moves them up', () => {
+  const r = R.assignDay({ date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER', 'OSPREY'] }, 'OSPREY', 'bdo', today);
+  assert.equal(r.day.bdo, 'OSPREY');
+  assert.deepEqual([...r.day.queue], ['HAWK', 'VIPER']);
+});
+
+test('assign to the queue adds at the end', () => {
+  const r = R.assignDay({ date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER'] }, 'OSPREY', 'queue', today);
+  assert.deepEqual([...r.day.queue], ['VIPER', 'OSPREY']);
+  assert.equal(r.position, 2);
+  const o = R.assignDay(open(), 'OSPREY', 'queue', today);
+  assert.equal(o.day.bdo, 'OSPREY', 'an empty day has no BDO to queue behind, so they become BDO');
+});
+
+test('assign rejects someone already in that place, and past days', () => {
+  const d = { date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER'] };
+  assert.equal(code(() => R.assignDay(d, 'HAWK', 'bdo', today)), 'ALREADY_THERE');
+  assert.equal(code(() => R.assignDay(d, 'HAWK', 'queue', today)), 'ALREADY_THERE');
+  assert.equal(code(() => R.assignDay(d, 'VIPER', 'queue', today)), 'ALREADY_THERE');
+  assert.equal(code(() => R.assignDay({ ...d, date: '2026-11-30' }, 'OSPREY', 'bdo', today)), 'PAST');
+});
+
+test('remove from day: BDO promotes the queue, queue member just leaves', () => {
+  const d = { date: '2026-12-05', bdo: 'HAWK', queue: ['VIPER', 'OSPREY'] };
+  const a = R.removeFromDay(d, 'HAWK', today);
+  assert.equal(a.day.bdo, 'VIPER');
+  assert.equal(a.promoted, 'VIPER');
+  const b = R.removeFromDay(d, 'viper', today);
+  assert.deepEqual([...b.day.queue], ['OSPREY']);
+  assert.equal(b.promoted, '');
+  assert.equal(code(() => R.removeFromDay(d, 'RAVEN', today)), 'NOT_THERE');
+});

@@ -13,7 +13,8 @@
     me: '', isAdmin: false, crew: [], pickCs: '',
     tab: 'pick', month: '', days: [], sel: '',
     msg: '', msgKind: 'ok', busy: false, pending: '',
-    admins: [], linked: [], lastChange: '', addCs: ''
+    admins: [], linked: [], lastChange: '', addCs: '',
+    crewAll: [], psel: '', assignCs: ''
   };
 
   // ---------- small helpers ----------
@@ -131,6 +132,7 @@
     S.days = d.days || [];
     S.admins = d.admins || [];
     S.linked = d.linkedCallsigns || [];
+    S.crewAll = d.crewCallsigns || [];
     S.lastChange = d.lastChange || '';
     if (!dayOf(S.sel)) S.sel = defaultSel();
     render();
@@ -162,18 +164,54 @@
         });
       }).then(function () { S.pending = ''; render(); });
     },
+    // Planner calendar: tapping a BDO day opens its panel; tapping any other date adds it.
     toggle: function (el) {
       var date = el.getAttribute('data-date');
+      S.msg = '';
+      S.assignCs = '';
+      if (dayOf(date)) { S.psel = date; return render(); }
+      busy(function () {
+        return api('setDay', { date: date, on: true }).then(function (res) {
+          S.days = res.days;
+          S.psel = date;
+          say('ok', shortDay(date) + ' added as a BDO day. It shows as open to everyone.');
+        });
+      });
+    },
+    removeDay: function () {
+      var date = S.psel;
       var day = dayOf(date);
-      var holders = day ? [day.bdo].concat(day.queue).filter(Boolean) : [];
+      if (!day) return;
+      var holders = [day.bdo].concat(day.queue).filter(Boolean);
       var go = holders.length ? ask('Remove ' + shortDay(date) + '? ' + holders.join(', ') + ' will be told.') : Promise.resolve(true);
       go.then(function (ok) {
         if (!ok) return;
         busy(function () {
-          return api('setDay', { date: date, on: !day }).then(function (res) {
+          return api('setDay', { date: date, on: false }).then(function (res) {
             S.days = res.days;
-            say('ok', day ? shortDay(date) + ' removed.' : shortDay(date) + ' added as a BDO day. It shows as open to everyone.');
+            S.psel = '';
+            say('ok', shortDay(date) + ' removed.');
           });
+        });
+      });
+    },
+    assign: function (el) {
+      if (!S.assignCs || !S.psel) return;
+      var args = { date: S.psel, callsign: S.assignCs, as: el.getAttribute('data-v') };
+      busy(function () {
+        return api('assign', args).then(function (res) {
+          S.days = S.days.map(function (d) { return d.date === res.day.date ? res.day : d; });
+          S.assignCs = '';
+          say('ok', res.message);
+        });
+      });
+    },
+    unassign: function (el) {
+      var args = { date: S.psel, callsign: el.getAttribute('data-cs') };
+      busy(function () {
+        return api('unassign', args).then(function (res) {
+          S.days = S.days.map(function (d) { return d.date === res.day.date ? res.day : d; });
+          say('ok', res.message);
         });
       });
     },
@@ -219,6 +257,7 @@
   app.addEventListener('change', function (ev) {
     if (ev.target.name === 'callsign') { S.pickCs = ev.target.value; render(); }
     if (ev.target.id === 'add-admin') { S.addCs = ev.target.value; render(); }
+    if (ev.target.id === 'assign-who') { S.assignCs = ev.target.value; render(); }
   });
 
   // ---------- drawing ----------
@@ -264,7 +303,7 @@
         '<button type="button" role="tab" id="tab-pick" data-act="tab" data-v="pick" aria-selected="' + (S.tab === 'pick') + '">Pick days</button>' +
         '<button type="button" role="tab" id="tab-planner" data-act="tab" data-v="planner" aria-selected="' + (S.tab === 'planner') + '">Planner</button></div>'
       : '';
-    var sub = S.tab === 'planner' ? 'Tap a day to turn BDO on or off' : 'Signed in as ' + esc(S.me);
+    var sub = S.tab === 'planner' ? 'Tap a date to add it, or a BDO day to manage it' : 'Signed in as ' + esc(S.me);
     return tabs + '<div class="monthbar"><div><div class="sub">' + sub + '</div><h1>' + monthTitle(S.month) + '</h1></div>' +
       '<div class="nav"><button type="button" class="round" data-act="month" data-v="-1" aria-label="Previous month">' + ICON_PREV + '</button>' +
       '<button type="button" class="round" data-act="month" data-v="1" aria-label="Next month">' + ICON_NEXT + '</button></div></div>';
@@ -374,17 +413,52 @@
       var past = date < t;
       var tag = !day ? '' : !day.bdo ? 'OPEN' : day.queue.length ? 'BDO +' + day.queue.length : 'BDO';
       var label = longDay(date) + (day ? ', BDO day, ' + (day.bdo ? 'BDO ' + day.bdo + ', ' + day.queue.length + ' in queue' : 'open') : ', not a BDO day');
-      return '<button type="button" class="day ' + (day ? 'set' : 'planner-unset') + (past ? ' past' : '') + '" data-act="toggle" data-date="' + date + '"' +
-        ' aria-pressed="' + !!day + '" aria-label="' + esc(label) + '"' + (past || S.busy ? ' disabled' : '') + '>' +
+      var disabled = S.busy || (past && !day); // past BDO days can still be opened to see who had them
+      return '<button type="button" class="day ' + (day ? 'set' : 'planner-unset') + (past ? ' past' : '') + (date === S.psel ? ' sel' : '') + '" data-act="toggle" data-date="' + date + '"' +
+        ' aria-pressed="' + !!day + '" aria-label="' + esc(label) + '"' + (disabled ? ' disabled' : '') + '>' +
         '<span class="n">' + n + '</span><span class="t">' + tag + '</span></button>';
     });
     var who = days.map(function (d) {
       var w = !d.bdo ? 'Open' : d.bdo + (d.queue.length ? ' · queue: ' + d.queue.join(', ') : ' · queue empty');
       return '<div><span class="d">' + shortDay(d.date) + '</span><span class="w' + (d.bdo ? '' : ' open') + '">' + esc(w) + '</span></div>';
     }).join('');
-    return counts + cal + status() +
+    return counts + cal + dayPanel() + status() +
       '<section class="card list"><span class="label">Who has what</span>' + (who || '<div class="hint">No BDO days this month yet.</div>') + '</section>' +
       admins();
+  }
+
+  var ICON_X = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+  // Planner's panel for one BDO day: who is on it, put someone on it, take someone off, remove the day.
+  function dayPanel() {
+    var day = S.psel && S.psel.slice(0, 7) === S.month ? dayOf(S.psel) : null;
+    if (!day) return '';
+    var past = day.date < todayStr();
+    var off = past || S.busy;
+    var x = function (cs) {
+      return '<button type="button" class="x" data-act="unassign" data-cs="' + esc(cs) + '" aria-label="Take ' + esc(cs) + ' off this day"' + (off ? ' disabled' : '') + '>' + ICON_X + '</button>';
+    };
+    var queue = day.queue.length
+      ? day.queue.map(function (cs, i) { return '<div class="qi"><span class="qn">' + (i + 1) + '</span><b class="grow">' + esc(cs) + '</b>' + x(cs) + '</div>'; }).join('')
+      : '<span class="hint">Nobody in the queue</span>';
+    var onDay = [day.bdo].concat(day.queue);
+    var options = S.crewAll.filter(function (c) { return onDay.indexOf(c) < 0; }).map(function (c) {
+      return '<option value="' + esc(c) + '"' + (S.assignCs === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+    }).join('');
+    var noPick = !S.assignCs || off;
+    return '<section id="day-panel" class="card" style="display:flex;flex-direction:column;gap:10px">' +
+      '<h2 style="font-size:17px">' + longDay(day.date) + '</h2>' +
+      '<div class="qi"><span class="hint grow">BDO</span>' + (day.bdo ? '<b>' + esc(day.bdo) + '</b>' + x(day.bdo) : '<b>Open</b>') + '</div>' +
+      '<div class="queue"><span class="hint">Queue</span>' + queue + '</div>' +
+      (past ? '<span class="hint">This day has passed, so it can\'t be changed.</span>' :
+        '<span class="label" style="margin-top:4px">Put someone on this day</span>' +
+        '<label for="assign-who" class="sr">Callsign to put on this day</label>' +
+        '<select id="assign-who" class="sel"><option value="">Pick a callsign…</option>' + options + '</select>' +
+        '<div class="addrow" style="padding-top:0"><button type="button" class="btn grow" data-act="assign" data-v="bdo"' + (noPick ? ' disabled' : '') + '>Make BDO</button>' +
+        '<button type="button" class="btn ghost grow" data-act="assign" data-v="queue"' + (noPick ? ' disabled' : '') + '>Add to queue</button></div>' +
+        '<span class="hint" style="font-size:13px">Make BDO moves the current BDO to number 1 in the queue. Everyone affected gets a Telegram message.</span>' +
+        '<button type="button" class="pill" style="align-self:flex-start;margin-top:4px" data-act="removeDay"' + (S.busy ? ' disabled' : '') + '>Remove this BDO day</button>') +
+      '</section>';
   }
 
   function admins() {

@@ -83,12 +83,14 @@ function handle(req, user) {
   if (action === 'pick') return write(function () { return pick(me, req.date); });
   if (action === 'drop') return write(function () { return drop(me, req.date); });
 
-  var adminActions = ['setDay', 'admins', 'addAdmin', 'removeMe'];
+  var adminActions = ['setDay', 'admins', 'addAdmin', 'removeMe', 'assign', 'unassign'];
   if (adminActions.indexOf(action) < 0) throw new RuleError('BAD_ACTION', 'Unknown request.');
   if (readAdmins().indexOf(me) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
 
   if (action === 'admins') return adminsData();
   if (action === 'setDay') return write(function () { return changeDay(me, req.date, !!req.on); });
+  if (action === 'assign') return write(function () { return assign(me, req.date, req.callsign, req.as === 'bdo' ? 'bdo' : 'queue'); });
+  if (action === 'unassign') return write(function () { return unassign(me, req.date, req.callsign); });
   if (action === 'addAdmin') {
     return write(function () {
       var admins = addAdmin(readAdmins(), readCrew(), req.callsign);
@@ -125,6 +127,7 @@ function initData(user) {
     data.admins = a.admins;
     data.linkedCallsigns = a.linked;
     data.lastChange = a.lastChange;
+    data.crewCallsigns = readCrew().map(function (c) { return c.callsign; });
   }
   return data;
 }
@@ -183,6 +186,50 @@ function drop(me, date) {
     message = 'You left the queue for ' + name + '.' + (wasAt < r.day.queue.length ? ' Everyone behind you moved up one place.' : '');
   }
   return { day: r.day, message: message };
+}
+
+// Planner puts a crew member on a day as BDO (current BDO moves to queue 1) or into the queue.
+function assign(me, date, callsign, as) {
+  var cs = normCall(callsign);
+  if (!readCrew().some(function (c) { return c.callsign === cs; })) {
+    throw new RuleError('UNKNOWN', cs + ' is not on the crew list. Add them to the Crew tab first.');
+  }
+  var days = readDays();
+  var i = findDay(days, date);
+  var r = assignDay(days[i], cs, as, today());
+  days[i] = r.day;
+  writeDays(days);
+  var name = fmtDay(date);
+  if (r.position === 0) {
+    log(me, 'put ' + cs + ' on ' + name + ' as BDO');
+    notify(cs, 'The BDO planner has put you on ' + name + ' as BDO.');
+    if (r.displaced) {
+      notify(r.displaced, 'The BDO planner has made ' + cs + ' BDO on ' + name + '. You are now number 1 in the queue.');
+      return { day: r.day, message: cs + ' is now BDO on ' + name + '. ' + r.displaced + ' moved to number 1 in the queue.' };
+    }
+    return { day: r.day, message: cs + ' is now BDO on ' + name + '.' };
+  }
+  log(me, 'put ' + cs + ' in the queue for ' + name + ' (number ' + r.position + ')');
+  notify(cs, 'The BDO planner has put you in the queue for ' + name + '. You are number ' + r.position + '.');
+  return { day: r.day, message: cs + ' is number ' + r.position + ' in the queue for ' + name + '.' };
+}
+
+// Planner takes someone off a day; taking off the BDO moves the queue up.
+function unassign(me, date, callsign) {
+  var cs = normCall(callsign);
+  var days = readDays();
+  var i = findDay(days, date);
+  var r = removeFromDay(days[i], cs, today());
+  days[i] = r.day;
+  writeDays(days);
+  var name = fmtDay(date);
+  log(me, 'took ' + cs + ' off ' + name + (r.promoted ? ', ' + r.promoted + ' moved up' : ''));
+  notify(cs, 'The BDO planner has taken you off ' + name + '.');
+  if (r.promoted) {
+    notify(r.promoted, "You're now BDO on " + name + '. ' + cs + ' was taken off the day, so you moved up from first in the queue.');
+    return { day: r.day, message: cs + ' is off ' + name + '. ' + r.promoted + ' moved up to BDO.' };
+  }
+  return { day: r.day, message: cs + ' is off ' + name + '.' };
 }
 
 function changeDay(me, date, on) {

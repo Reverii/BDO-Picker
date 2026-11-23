@@ -140,13 +140,24 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
       <ol>
         <li>Open the <b>Planner</b> tab and go to the month with ‹ ›.</li>
         <li>Tap a date to make it a BDO day. It turns blue and shows <b>OPEN</b> to everyone straight away.</li>
-        <li>Tap it again to remove it. If someone has already picked it, the app asks first, and everyone on that day gets a Telegram message that it's no longer needed.</li>
+        <li>To remove a day, tap it, then <b class="btn red">Remove this BDO day</b>. If someone has already picked it, the app asks first, and everyone on that day gets a Telegram message that it's no longer needed.</li>
       </ol>
       <div class="tip" style="margin-top:10px">Crew can only pick days you have set. Post in the group once a month's days are in.</div>
     </div>
 
     <div class="card">
-      <h3>2. See who has what</h3>
+      <h3>2. Put people on a day yourself</h3>
+      <p>Tap a BDO day on the Planner tab. A panel opens showing its BDO and queue.</p>
+      <ul>
+        <li><b>Put someone on it:</b> pick a callsign, then tap <b class="btn">Make BDO</b> or <b class="btn">Add to queue</b>. The list has the whole crew, even people who haven't opened the app yet.</li>
+        <li><b>Make BDO on a taken day:</b> the current BDO isn't dropped. They move to number 1 in the queue.</li>
+        <li><b>Take someone off:</b> tap the <b>×</b> next to their name. Taking off the BDO moves number 1 in the queue up to BDO.</li>
+        <li>Everyone affected gets a Telegram message, and each change goes in the Log.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>3. See who has what</h3>
       <ul>
         <li>The three counts at the top: <b>BDO days</b>, <b>have a BDO</b> and <b>still open</b> (in red) for the month on screen.</li>
         <li>On the calendar, <b>BDO +2</b> means a BDO plus two people queuing. <b>OPEN</b> means nobody yet.</li>
@@ -155,7 +166,7 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
     </div>
 
     <div class="card">
-      <h3>3. Pass on or share planner rights</h3>
+      <h3>4. Pass on or share planner rights</h3>
       <ol>
         <li>Scroll to <b>Admins</b> at the bottom of the Planner tab.</li>
         <li>Pick a callsign and tap <b class="btn">Add admin</b>. They get a Telegram message. The person must have opened BDO Picker once first.</li>
@@ -165,7 +176,7 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
     </div>
 
     <div class="card">
-      <h3>4. Fixing things in the Google Sheet</h3>
+      <h3>5. Fixing things in the Google Sheet</h3>
       <p>Everything lives in the BDO Picker Google Sheet. The Sheet owner can fix anything by hand:</p>
       <ul>
         <li><b>Crew tab:</b> add or remove callsigns in column A. To unlink someone who picked the wrong callsign, clear their Telegram ID and username (columns B and C). They pick again next time they open the app.</li>

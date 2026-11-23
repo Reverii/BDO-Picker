@@ -36,7 +36,7 @@
     var d = whoami();
     if (!d.linked) return d;
     d.days = upcoming();
-    if (d.isAdmin) { d.admins = state.admins; d.linkedCallsigns = linkedCallsigns(); d.lastChange = state.lastChange; }
+    if (d.isAdmin) { d.admins = state.admins; d.linkedCallsigns = linkedCallsigns(); d.lastChange = state.lastChange; d.crewCallsigns = state.crew.map(function (c) { return c.callsign; }); }
     return d;
   }
   function month(m) { return state.days.filter(function (d) { return d.date.slice(0, 7) === m; }); }
@@ -61,6 +61,14 @@
     }
     if (state.admins.indexOf(m) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
     if (action === 'setDay') { state.days = setDay(state.days, args.date, args.on, today).days; return { days: upcoming() }; }
+    if (action === 'assign') {
+      var k = find(args.date); var a = assignDay(state.days[k], args.callsign, args.as, today); state.days[k] = a.day; var cs = normCall(args.callsign);
+      return { day: a.day, message: a.position === 0 ? cs + ' is now BDO on ' + fmtDay(args.date) + '.' + (a.displaced ? ' ' + a.displaced + ' moved to number 1 in the queue.' : '') : cs + ' is number ' + a.position + ' in the queue for ' + fmtDay(args.date) + '.' };
+    }
+    if (action === 'unassign') {
+      var u = find(args.date); var x = removeFromDay(state.days[u], args.callsign, today); state.days[u] = x.day;
+      return { day: x.day, message: normCall(args.callsign) + ' is off ' + fmtDay(args.date) + '.' + (x.promoted ? ' ' + x.promoted + ' moved up to BDO.' : '') };
+    }
     if (action === 'admins') return { admins: state.admins, linked: state.crew.filter(function (c) { return c.telegramId; }).map(function (c) { return c.callsign; }), lastChange: state.lastChange };
     if (action === 'addAdmin') { state.admins = addAdmin(state.admins, state.crew, args.callsign); state.lastChange = m + ' added ' + normCall(args.callsign) + ' as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }
     if (action === 'removeMe') { state.admins = removeSelf(state.admins, m); state.lastChange = m + ' removed themselves as admin · 1 Dec'; return { admins: state.admins, lastChange: state.lastChange }; }

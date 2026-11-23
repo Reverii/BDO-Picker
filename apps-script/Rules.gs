@@ -110,3 +110,33 @@ function removeSelf(admins, me) {
   if (list.length < 2) throw new RuleError('LAST_ADMIN', "You're the only admin. Add someone before you remove yourself.");
   return list.filter(function (a) { return a !== me; });
 }
+
+// Planner puts someone on a day. as = 'bdo': they become BDO and the current BDO moves to the
+// front of the queue. as = 'queue': they join the end of the queue (or become BDO on an open day).
+function assignDay(day, callsign, as, today) {
+  checkDate(day.date, today);
+  var cs = normCall(callsign);
+  var d = copyDay(day);
+  var at = d.queue.indexOf(cs);
+  if (d.bdo === cs || (as !== 'bdo' && at >= 0)) throw new RuleError('ALREADY_THERE', cs + ' is already on this day.');
+  if (as === 'bdo' || !d.bdo) {
+    if (at >= 0) d.queue.splice(at, 1);
+    var displaced = d.bdo;
+    if (displaced) d.queue.unshift(displaced);
+    d.bdo = cs;
+    return { day: d, displaced: displaced, position: 0 };
+  }
+  d.queue.push(cs);
+  return { day: d, displaced: '', position: d.queue.length };
+}
+
+// Planner takes someone off a day. Taking off the BDO moves the queue up, like a drop.
+function removeFromDay(day, callsign, today) {
+  checkDate(day.date, today);
+  var cs = normCall(callsign);
+  if (cs !== normCall(day.bdo) && (day.queue || []).map(normCall).indexOf(cs) < 0) {
+    throw new RuleError('NOT_THERE', cs + " isn't on this day.");
+  }
+  var r = dropDay(day, cs, today);
+  return { day: r.day, promoted: r.promoted };
+}

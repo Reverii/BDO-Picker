@@ -315,3 +315,61 @@ test('a request reads each tab only once', () => {
   assert.equal(reads(gas, 'Admins'), 1);
   assert.equal(reads(gas, 'Days'), 1);
 });
+
+test('admin makes someone BDO: old BDO goes to queue 1, both are told', () => {
+  const { gas, call } = start();
+  call(1, 'pick', { date: '2026-12-05' });
+  call(2, 'pick', { date: '2026-12-05' });
+  gas.state.sent.length = 0;
+  const r = call(3, 'assign', { date: '2026-12-05', callsign: 'osprey', as: 'bdo' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(row(gas, '2026-12-05'), ['2026-12-05', 'OSPREY', 'HAWK, VIPER']);
+  assert.deepEqual(gas.state.sent, [
+    { chat_id: '4', text: 'The BDO planner has put you on Saturday 5 Dec as BDO.' },
+    { chat_id: '1', text: 'The BDO planner has made OSPREY BDO on Saturday 5 Dec. You are now number 1 in the queue.' },
+  ]);
+  assert.equal(r.message, 'OSPREY is now BDO on Saturday 5 Dec. HAWK moved to number 1 in the queue.');
+  const log = gas.sheet('Log');
+  assert.equal(log[log.length - 1][2], 'put OSPREY on Saturday 5 Dec as BDO');
+});
+
+test('admin adds someone to the queue', () => {
+  const { gas, call } = start();
+  call(1, 'pick', { date: '2026-12-05' });
+  gas.state.sent.length = 0;
+  const r = call(3, 'assign', { date: '2026-12-05', callsign: 'RAVEN', as: 'queue' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(row(gas, '2026-12-05'), ['2026-12-05', 'HAWK', 'RAVEN']);
+  assert.equal(r.message, 'RAVEN is number 1 in the queue for Saturday 5 Dec.');
+  assert.deepEqual(gas.state.sent, [], 'RAVEN has no Telegram linked yet, so nothing is sent');
+  assert.ok(gas.sheet('Log').some((l) => l[2] === 'message to RAVEN not delivered'));
+});
+
+test('admin takes someone off a day', () => {
+  const { gas, call } = start();
+  call(1, 'pick', { date: '2026-12-05' });
+  call(2, 'pick', { date: '2026-12-05' });
+  gas.state.sent.length = 0;
+  const r = call(3, 'unassign', { date: '2026-12-05', callsign: 'HAWK' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(row(gas, '2026-12-05'), ['2026-12-05', 'VIPER', '']);
+  assert.deepEqual(gas.state.sent, [
+    { chat_id: '1', text: 'The BDO planner has taken you off Saturday 5 Dec.' },
+    { chat_id: '2', text: "You're now BDO on Saturday 5 Dec. HAWK was taken off the day, so you moved up from first in the queue." },
+  ]);
+  assert.equal(r.message, 'HAWK is off Saturday 5 Dec. VIPER moved up to BDO.');
+});
+
+test('only admins can put people on days, and only crew callsigns', () => {
+  const { call } = start();
+  assert.equal(call(1, 'assign', { date: '2026-12-05', callsign: 'VIPER', as: 'bdo' }).error, 'Only the BDO planner can do that.');
+  assert.equal(call(1, 'unassign', { date: '2026-12-05', callsign: 'VIPER' }).error, 'Only the BDO planner can do that.');
+  assert.match(call(3, 'assign', { date: '2026-12-05', callsign: 'NOBODY', as: 'bdo' }).error, /not on the crew list/);
+  assert.equal(call(3, 'assign', { date: '2026-12-06', callsign: 'VIPER', as: 'bdo' }).error, "The planner hasn't set that day as a BDO day.");
+});
+
+test('init gives admins the whole crew list for putting people on days', () => {
+  const { call } = start();
+  assert.deepEqual(call(3, 'init').crewCallsigns, ['HAWK', 'VIPER', 'MAMBA', 'OSPREY', 'RAVEN', 'KESTREL']);
+  assert.equal(call(1, 'init').crewCallsigns, undefined);
+});

@@ -122,6 +122,9 @@ test('planner removing a held day asks first', async () => {
   const page = await open();
   await page.locator('#tab-planner').click();
   await page.locator('#cal [data-date="2026-12-05"]').click();
+  await page.locator('#day-panel', { hasText: 'Saturday 5 Dec' }).waitFor();
+  assert.match(await page.locator('#cal [data-date="2026-12-05"]').innerText(), /BDO/, 'tapping a set day only selects it');
+  await page.getByRole('button', { name: 'Remove this BDO day' }).click();
   await page.locator('#cal [data-date="2026-12-05"]', { hasText: /^\s*5\s*$/ }).waitFor();
   assert.equal(await page.evaluate(() => window.LAST_CONFIRM), 'Remove Sat 5 Dec? HAWK, VIPER will be told.');
   await page.close();
@@ -206,5 +209,44 @@ test('guide page has a crew part and a planner part and fits a phone', async () 
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 360));
   await page.getByRole('link', { name: 'Planner guide' }).click();
   assert.equal(await page.evaluate(() => location.hash), '#planner');
+  await page.close();
+});
+
+test('planner makes someone BDO and the old BDO moves to queue 1', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  await page.locator('#cal [data-date="2026-12-05"]').click();
+  await page.locator('#assign-who').selectOption('OSPREY');
+  await page.getByRole('button', { name: 'Make BDO' }).click();
+  await page.locator('#status', { hasText: 'OSPREY is now BDO' }).waitFor();
+  const panel = await page.locator('#day-panel').innerText();
+  assert.match(panel, /BDO\s*OSPREY/);
+  assert.match(panel, /1\s*HAWK[\s\S]*2\s*VIPER/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('planner adds someone to the queue and takes someone off', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  await page.locator('#cal [data-date="2026-12-05"]').click();
+  await page.locator('#assign-who').selectOption('RAVEN');
+  await page.getByRole('button', { name: 'Add to queue' }).click();
+  await page.locator('#status', { hasText: 'RAVEN is number 2 in the queue' }).waitFor();
+  assert.match(await page.locator('#day-panel').innerText(), /2\s*RAVEN/);
+  await page.getByRole('button', { name: 'Take VIPER off this day' }).click();
+  await page.locator('#status', { hasText: 'VIPER is off' }).waitFor();
+  const queue = await page.locator('#day-panel .queue').innerText(); // the dropdown lists VIPER again, so check the queue only
+  assert.doesNotMatch(queue, /VIPER/);
+  assert.match(queue, /1\s*RAVEN/);
+  await page.close();
+});
+
+test('the planner day panel fits a phone', async () => {
+  const page = await open({ width: 360 });
+  await page.locator('#tab-planner').click();
+  await page.locator('#cal [data-date="2026-12-05"]').click();
+  await page.getByRole('button', { name: 'Make BDO' }).waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 360));
   await page.close();
 });
