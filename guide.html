@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BDO Picker guide</title>
+<style>
+:root {
+  --bg: #f1f2f5; --card: #ffffff; --text: #0f1419; --hint: #5f666d; --line: #e3e5e8;
+  --accent: #1c6db5; --accent-text: #ffffff; --danger: #c62828;
+  --taken-bg: #ffe9c2; --taken-fg: #6e4300; --tip-bg: #e8f1fb; --tip-fg: #15456f;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17191c; --card: #212428; --text: #eceef0; --hint: #a3a9af; --line: rgba(255,255,255,.12);
+    --accent: #4b97e0; --accent-text: #0b1520; --danger: #ef6b62; --taken-bg: #5a4210; --taken-fg: #ffe2ad;
+    --tip-bg: #1c2d40; --tip-fg: #cfe3f7; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; }
+h2 { font-size: 22px; margin: 0 0 4px; scroll-margin-top: 72px; }
+h3 { font-size: 17px; margin: 0 0 8px; }
+p { margin: 0 0 10px; }
+.lead { color: var(--hint); margin-bottom: 16px; }
+.jump { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; padding: 10px 0; background: var(--bg); }
+.jump a { flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: var(--card); color: var(--text); text-decoration: none; font-weight: 600; }
+.jump a.primary { background: var(--accent); color: var(--accent-text); }
+section { margin-top: 24px; }
+.sub { color: var(--hint); margin-bottom: 12px; }
+.card { background: var(--card); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+ol, ul { margin: 0; padding-left: 22px; }
+li { margin: 4px 0; }
+li::marker { color: var(--hint); font-weight: 600; }
+b.btn { display: inline-block; padding: 0 8px; border-radius: 7px; background: var(--accent); color: var(--accent-text); font-size: 14px; line-height: 24px; white-space: nowrap; }
+b.btn.red { background: var(--danger); color: #fff; }
+.tip { background: var(--tip-bg); color: var(--tip-fg); border-radius: 12px; padding: 12px 14px; font-size: 15px; }
+.legend { display: grid; grid-template-columns: 56px 1fr; gap: 10px 14px; align-items: center; }
+.day { width: 52px; height: 52px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 600; }
+.day .n { font-size: 15px; }
+.day .t { font-size: 9px; letter-spacing: .02em; }
+.d-open { background: var(--card); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.d-taken { background: var(--taken-bg); color: var(--taken-fg); }
+.d-mine { background: var(--accent); color: var(--accent-text); }
+.d-off { color: var(--hint); box-shadow: inset 0 0 0 1px var(--line); }
+.queue { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+.qi { display: flex; align-items: center; gap: 10px; }
+.qn { width: 24px; height: 24px; border-radius: 12px; background: var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.qi.up .qn { background: var(--accent); color: var(--accent-text); }
+.qn.wide { width: auto; padding: 0 7px; }
+.arrow { color: var(--hint); font-size: 14px; }
+footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>BDO Picker guide</h1>
+  <p class="lead">Pick your BDO dates in Telegram. First come, first served, with a queue behind whoever picks first.</p>
+
+  <nav class="jump" aria-label="Jump to">
+    <a href="#everyone" class="primary">Crew guide</a>
+    <a href="#planner">Planner guide</a>
+  </nav>
+
+  <!-- ===================== CREW ===================== -->
+  <section id="everyone">
+    <h2>For everyone</h2>
+    <p class="sub">How to pick, swap out and keep track of your BDO days.</p>
+
+    <div class="card">
+      <h3>1. Open it</h3>
+      <p>Tap the <b>BDO Picker</b> link pinned in the group chat. It opens inside Telegram. There's no login: Telegram tells it who you are.</p>
+      <div class="tip">Opening it in a normal browser only shows "Open BDO Picker from the Telegram link." Always use the Telegram link.</div>
+    </div>
+
+    <div class="card">
+      <h3>2. First time only: link your callsign</h3>
+      <ol>
+        <li>Pick your callsign from the list. Callsigns that are greyed out are already linked to someone.</li>
+        <li>Tap <b class="btn">I'm [your callsign]</b>.</li>
+        <li>When Telegram asks whether the bot may message you, tap <b>Allow</b>. That's how you'll hear when you move up to BDO.</li>
+      </ol>
+      <p style="margin-top:10px">Callsign missing, or someone took yours? Message the BDO planner.</p>
+    </div>
+
+    <div class="card">
+      <h3>3. Read the calendar</h3>
+      <div class="legend">
+        <div class="day d-open"><span class="n">12</span><span class="t">OPEN</span></div>
+        <div><b>Open.</b> A BDO day nobody has picked yet.</div>
+        <div class="day d-taken"><span class="n">5</span><span class="t">HAWK</span></div>
+        <div><b>Taken.</b> Someone is BDO. You can still join the queue.</div>
+        <div class="day d-mine"><span class="n">13</span><span class="t">BDO</span></div>
+        <div><b>Yours.</b> You're BDO, or you're in the queue (shows <b>QUEUE 2</b> and so on).</div>
+        <div class="day d-off"><span class="n">6</span><span class="t">&nbsp;</span></div>
+        <div><b>Plain number.</b> Not a BDO day, so it can't be tapped.</div>
+      </div>
+      <p style="margin-top:12px">Use the ‹ › arrows at the top to change month. Tap any coloured day to see who is BDO and who is queuing.</p>
+    </div>
+
+    <div class="card">
+      <h3>4. Pick a day</h3>
+      <ol>
+        <li>Tap the day.</li>
+        <li>Tap <b class="btn">Take this day</b> if it's open: you're the BDO.</li>
+        <li>If someone got there first, tap <b class="btn">Join the queue</b>. You're next in line after the people already queuing.</li>
+      </ol>
+      <p style="margin-top:10px">While it saves, the day shows <b>SAVING…</b> for a second or two. Pick as many days as you like. <b>My days</b> at the bottom lists everything you hold.</p>
+    </div>
+
+    <div class="card">
+      <h3>5. Can't make it?</h3>
+      <p><b>If you're the BDO:</b> tap the day, then <b class="btn red">Drop this day</b>. Number 1 in the queue becomes BDO and gets a Telegram message. If nobody is queuing, the day goes back to open.</p>
+      <div class="queue" aria-label="Example: HAWK drops the day">
+        <div class="qi"><span class="qn wide">BDO</span><span><s>HAWK</s> <span class="arrow">dropped</span></span></div>
+        <div class="qi up"><span class="qn">1</span><span><b>VIPER</b> <span class="arrow">→ now BDO, gets a message</span></span></div>
+        <div class="qi up"><span class="qn">2</span><span><b>OSPREY</b> <span class="arrow">→ now number 1</span></span></div>
+      </div>
+      <p style="margin-top:10px"><b>If you're in the queue:</b> tap the day, then <b class="btn red">Leave the queue</b>. Everyone behind you moves up one place.</p>
+    </div>
+
+    <div class="card">
+      <h3>Good to know</h3>
+      <ul>
+        <li>Past days can't be picked or dropped.</li>
+        <li>The app shows the picks as they were when you opened it. Close and reopen it to see the latest.</li>
+        <li>Not getting bot messages? Open the BDO Picker bot's chat once and tap <b>Start</b>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================== PLANNER ===================== -->
+  <section id="planner">
+    <h2>For planners</h2>
+    <p class="sub">Admins see a <b>Planner</b> tab next to <b>Pick days</b>.</p>
+
+    <div class="card">
+      <h3>1. Set the BDO days</h3>
+      <ol>
+        <li>Open the <b>Planner</b> tab and go to the month with ‹ ›.</li>
+        <li>Tap a date to make it a BDO day. It turns blue and shows <b>OPEN</b> to everyone straight away.</li>
+        <li>Tap it again to remove it. If someone has already picked it, the app asks first, and everyone on that day gets a Telegram message that it's no longer needed.</li>
+      </ol>
+      <div class="tip" style="margin-top:10px">Crew can only pick days you have set. Post in the group once a month's days are in.</div>
+    </div>
+
+    <div class="card">
+      <h3>2. See who has what</h3>
+      <ul>
+        <li>The three counts at the top: <b>BDO days</b>, <b>have a BDO</b> and <b>still open</b> (in red) for the month on screen.</li>
+        <li>On the calendar, <b>BDO +2</b> means a BDO plus two people queuing. <b>OPEN</b> means nobody yet.</li>
+        <li><b>Who has what</b> lists every day with its BDO and the queue in order.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>3. Pass on or share planner rights</h3>
+      <ol>
+        <li>Scroll to <b>Admins</b> at the bottom of the Planner tab.</li>
+        <li>Pick a callsign and tap <b class="btn">Add admin</b>. They get a Telegram message. The person must have opened BDO Picker once first.</li>
+        <li>To hand over, add the new planner, then tap <b>Remove me</b> next to your own name.</li>
+      </ol>
+      <p style="margin-top:10px">You can only remove yourself, not other admins. The last admin can't leave, so the app is never left without one.</p>
+    </div>
+
+    <div class="card">
+      <h3>4. Fixing things in the Google Sheet</h3>
+      <p>Everything lives in the BDO Picker Google Sheet. The Sheet owner can fix anything by hand:</p>
+      <ul>
+        <li><b>Crew tab:</b> add or remove callsigns in column A. To unlink someone who picked the wrong callsign, clear their Telegram ID and username (columns B and C). They pick again next time they open the app.</li>
+        <li><b>Admins tab:</b> one callsign per row. Use this if you're ever locked out.</li>
+        <li><b>Days tab:</b> one row per BDO date: the date (YYYY-MM-DD), the BDO, and the queue (callsigns separated by commas, in order).</li>
+        <li><b>Log tab:</b> every pick, drop, day change and admin change, with who and when. "message to X not delivered" means that person needs to tap <b>Start</b> in the bot's chat.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Questions? Message the BDO planner.</footer>
+</main>
+</body>
+</html>

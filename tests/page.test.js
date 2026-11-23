@@ -197,3 +197,14 @@ test('the planner tab opens without a request', async () => {
   assert.equal(await calls(page), 1);
   await page.close();
 });
+
+test('guide page has a crew part and a planner part and fits a phone', async () => {
+  const page = await browser.newPage({ viewport: { width: 360, height: 740 } });
+  await page.goto(base + 'guide.html');
+  await page.getByRole('heading', { name: 'For everyone' }).waitFor({ timeout: 5000 });
+  await page.getByRole('heading', { name: 'For planners' }).waitFor({ timeout: 5000 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 360));
+  await page.getByRole('link', { name: 'Planner guide' }).click();
+  assert.equal(await page.evaluate(() => location.hash), '#planner');
+  await page.close();
+});
