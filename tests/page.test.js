@@ -268,6 +268,34 @@ test('planner adds and removes crew', async () => {
   await page.close();
 });
 
+test('planner reads the activity log, newest first, and loads older lines', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  assert.equal(await calls(page, 'log'), 0, 'nothing is loaded until asked');
+  await page.getByRole('button', { name: 'Show log' }).click();
+  await page.locator('#log .logrow').first().waitFor();
+  assert.equal(await page.locator('#log .logrow').count(), 50);
+  assert.match(await page.locator('#log .logrow').first().innerText(), /RAVEN not delivered/);
+  assert.equal(await page.locator('#log .logrow.failed').count(), 1);
+  assert.deepEqual(await page.locator('#log .logday').allInnerTexts(), ['Today', 'Monday 30 Nov']);
+  await page.getByRole('button', { name: 'Show older' }).click();
+  await page.locator('#log .logrow').nth(54).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Show older' }).count(), 0, 'no more to load');
+  assert.match(await page.locator('#log .logrow').last().innerText(), /picked line 1$/);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no sideways scroll');
+  await page.getByRole('button', { name: 'Hide' }).click();
+  assert.equal(await page.locator('#log').count(), 0);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('crew without admin rights see no log', async () => {
+  const page = await open({ admin: false });
+  await page.getByText('Signed in as MAMBA').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Show log' }).count(), 0);
+  await page.close();
+});
+
 test('planner connects the group, previews and posts the month', async () => {
   const page = await open();
   await page.locator('#tab-planner').click();

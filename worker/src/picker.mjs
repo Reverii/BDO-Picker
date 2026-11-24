@@ -15,7 +15,8 @@ const {
 export const TZ = 'Asia/Singapore';
 const LOCK_WAIT_MS = 10000;
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const ADMIN_ACTIONS = ['setDay', 'admins', 'addAdmin', 'removeMe', 'assign', 'unassign', 'addCrew', 'removeCrew', 'findGroup', 'announce'];
+const LOG_PAGE = 50;
+const ADMIN_ACTIONS = ['log', 'setDay', 'admins', 'addAdmin', 'removeMe', 'assign', 'unassign', 'addCrew', 'removeCrew', 'findGroup', 'announce'];
 
 function clock(date) {
   const p = {};
@@ -121,6 +122,7 @@ class Job {
     if ((await this.readAdmins()).indexOf(me) < 0) throw new RuleError('NOT_ADMIN', 'Only the BDO planner can do that.');
 
     if (action === 'admins') return this.adminsData();
+    if (action === 'log') return this.readLog(req.before);
     if (action === 'setDay') return this.write(() => this.changeDay(me, req.date, !!req.on));
     if (action === 'assign') return this.write(() => this.assign(me, req.date, req.callsign, req.as === 'bdo' ? 'bdo' : 'queue'));
     if (action === 'unassign') return this.write(() => this.unassign(me, req.date, req.callsign));
@@ -314,6 +316,17 @@ class Job {
     }
     const linked = (await this.readCrew()).filter((c) => c.telegramId).map((c) => c.callsign);
     return { admins: await this.readAdmins(), linked, lastChange };
+  }
+
+  // The log, newest first, LOG_PAGE lines at a time. `before` = the id of the oldest line already shown.
+  async readLog(before) {
+    const id = Math.floor(Number(before)) || 0;
+    const rows = (await this.db.prepare('SELECT id, at, who, what FROM log WHERE ?1 = 0 OR id < ?1 ORDER BY id DESC LIMIT ?2')
+      .bind(id, LOG_PAGE + 1).all()).results || [];
+    return {
+      entries: rows.slice(0, LOG_PAGE).map((r) => ({ id: r.id, at: String(r.at), who: String(r.who), what: String(r.what) })),
+      more: rows.length > LOG_PAGE,
+    };
   }
 
   // ---------- the Telegram group ----------

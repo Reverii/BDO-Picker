@@ -19,7 +19,12 @@
       { date: '2027-01-09', bdo: 'MAMBA', queue: [] },
     ],
     lastChange: 'OSPREY added MAMBA as admin · 20 Nov',
+    log: [],
   };
+  // 55 log lines over two days, oldest first (ids 1..55).
+  for (var n = 1; n <= 55; n++) {
+    state.log.push({ id: n, at: (n <= 30 ? '2026-11-30 ' : '2026-12-01 ') + (n % 24 < 10 ? '0' : '') + (n % 24) + ':00', who: n % 2 ? 'HAWK' : 'VIPER', what: n === 55 ? 'message to RAVEN not delivered' : 'picked line ' + n });
+  }
   var today = window.BDO_TODAY || '2026-12-01';
   window.FAKE = { calls: [], state: state };
 
@@ -75,6 +80,10 @@
       var rc = removeCrewMember(state.crew, state.admins, state.days, args.callsign, m, today);
       state.crew = rc.crew; state.admins = rc.admins; state.days = rc.days;
       return { crewList: crewList(), admins: state.admins, days: upcoming(), message: normCall(args.callsign) + ' removed from the crew.' };
+    }
+    if (action === 'log') {
+      var older = state.log.filter(function (e) { return !args.before || e.id < args.before; }).reverse();
+      return { entries: older.slice(0, 50), more: older.length > 50 };
     }
     if (action === 'findGroup') { state.groupTitle = '121 SQN'; return { groupTitle: state.groupTitle }; }
     if (action === 'announce') {

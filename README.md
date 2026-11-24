@@ -14,7 +14,8 @@ Everyone who picks it after that joins that date's queue, in the order they pick
 - **Planner (admins only):** a **Planner** tab where you tap dates to turn them into BDO days or back.
   Removing a date that people have picked asks first, and they get a Telegram message.
 - **Admins:** any admin can make another linked person an admin. Admins can remove only themselves, and
-  the last admin can't. Every change is written to the **Log** tab.
+  the last admin can't. Every change is written to the log, which planners can read under **Activity
+  log** at the bottom of the Planner tab.
 - **Past dates** can't be picked, dropped or changed.
 
 Where things live:
@@ -152,7 +153,8 @@ The data is in the D1 database. To look at it or fix something by hand, use the 
 - **Fixing a date by hand:** the Planner tab can put people on a day or take them off. The **days**
   table has one row per BDO date: `date` (`YYYY-MM-DD`), `bdo`, and `queue` (callsigns separated by
   commas, in order).
-- **Seeing what happened:** `SELECT * FROM log ORDER BY id DESC LIMIT 50;`
+- **Seeing what happened:** **Activity log** on the Planner tab, or
+  `SELECT * FROM log ORDER BY id DESC LIMIT 50;`
 - **Someone didn't get a bot message:** the log shows `message to X not delivered`. They need to open the
   bot's chat once and press **Start**.
 - **Updating the server after a change in this repo:** in `worker`, run `npm run deploy`. It applies any

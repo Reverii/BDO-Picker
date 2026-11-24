@@ -50,7 +50,17 @@ test('people picking at the same moment are all kept, in order', async () => {
   const { call, row } = start({ delay: 2 });
   const out = await Promise.all([1, 2, 3, 4].map((id) => call(id, 'pick', { date: '2026-12-05' })));
   assert.ok(out.every((r) => r.ok), JSON.stringify(out));
-  assert.deepEqual(row('2026-12-05'), ['2026-12-05', 'HAWK', 'VIPER, MAMBA, OSPREY']);
+  // Whoever reaches the lock first wins; nobody is lost or listed twice, and what each person was
+  // told matches what was saved.
+  const saved = row('2026-12-05');
+  const order = [saved[1]].concat(saved[2].split(', '));
+  assert.deepEqual(order.slice().sort(), ['HAWK', 'MAMBA', 'OSPREY', 'VIPER']);
+  const names = ['HAWK', 'VIPER', 'MAMBA', 'OSPREY'];
+  out.forEach((r, i) => {
+    const at = order.indexOf(names[i]);
+    if (at === 0) assert.match(r.message, /^You are BDO/);
+    else assert.match(r.message, new RegExp('You are number ' + at + ' in the queue'));
+  });
 });
 
 test('drop promotes and messages the new BDO', async () => {
@@ -485,4 +495,23 @@ test('announce without a group, or by a non-admin, is refused', async () => {
   const { call } = start();
   assert.equal((await call(3, 'announce', { month: '2026-12' })).error, 'Connect the group first: tap Find group.');
   assert.equal((await call(1, 'announce', { month: '2026-12' })).error, 'Only the BDO planner can do that.');
+});
+
+test('admins can read the log, newest first, 50 at a time', async () => {
+  const { call, db } = start();
+  for (let i = 1; i <= 60; i++) db.sql.prepare('INSERT INTO log (at, who, what) VALUES (?, ?, ?)').run('2026-11-30 09:00', 'HAWK', 'line ' + i);
+  const first = await call(3, 'log');
+  assert.equal(first.ok, true);
+  assert.equal(first.entries.length, 50);
+  assert.equal(first.more, true);
+  assert.deepEqual(first.entries[0], { id: 60, at: '2026-11-30 09:00', who: 'HAWK', what: 'line 60' });
+  const older = await call(3, 'log', { before: first.entries[49].id });
+  assert.deepEqual(older.entries.map((e) => e.what), Array.from({ length: 10 }, (_, i) => 'line ' + (10 - i)));
+  assert.equal(older.more, false);
+});
+
+test('only admins can read the log', async () => {
+  const { call } = start();
+  assert.equal((await call(1, 'log')).error, 'Only the BDO planner can do that.');
+  assert.equal((await call(77, 'log')).error, 'Pick your callsign first.');
 });
