@@ -198,13 +198,13 @@ footer { margin-top: 28px; color: var(--hint); font-size: 14px; }
     </div>
 
     <div class="card">
-      <h3>7. Fixing things in the Google Sheet</h3>
-      <p>Everything lives in the BDO Picker Google Sheet. The Sheet owner can fix anything by hand:</p>
+      <h3>7. Fixing things by hand</h3>
+      <p>Almost everything can be fixed from the Planner tab. For anything else, the person who set up BDO Picker can change the data directly in its database (on Cloudflare):</p>
       <ul>
-        <li><b>Crew tab:</b> the same list as the Crew section in the app. To unlink someone who picked the wrong callsign, clear their Telegram ID and username (columns B and C). They pick again next time they open the app.</li>
-        <li><b>Admins tab:</b> one callsign per row. Use this if you're ever locked out.</li>
-        <li><b>Days tab:</b> one row per BDO date: the date (YYYY-MM-DD), the BDO, and the queue (callsigns separated by commas, in order).</li>
-        <li><b>Log tab:</b> every pick, drop, day change and admin change, with who and when. "message to X not delivered" means that person needs to tap <b>Start</b> in the bot's chat.</li>
+        <li><b>crew:</b> the same list as the Crew section in the app. To unlink someone who picked the wrong callsign, clear their Telegram ID and username. They pick again next time they open the app.</li>
+        <li><b>admins:</b> one callsign per row. Use this if you're ever locked out.</li>
+        <li><b>days:</b> one row per BDO date: the date (YYYY-MM-DD), the BDO, and the queue (callsigns separated by commas, in order).</li>
+        <li><b>log:</b> every pick, drop, day change and admin change, with who and when. Planners can read it in the app: <b>Activity log</b> at the bottom of the Planner tab. "message to X not delivered" means that person needs to tap <b>Start</b> in the bot's chat.</li>
       </ul>
     </div>
   </section>

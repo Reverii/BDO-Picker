@@ -34,8 +34,8 @@ async function open({ initData = 'test', linked = true, admin = true, delay = 0,
     window.Telegram = { WebApp: { initData, themeParams: {}, ready() {}, expand() {}, requestWriteAccess(cb) { cb(true); }, showConfirm(msg, cb) { window.LAST_CONFIRM = msg; cb(true); }, openLink(url) { window.OPENED = url; } } };
     if (refreshMs) window.BDO_REFRESH_MS = refreshMs;
   }, { initData, linked, admin, delay, refreshMs });
-  // Rules.gs and the fake API load before app.js runs (app.js waits for DOMContentLoaded).
-  await page.addInitScript({ content: fs.readFileSync(path.join(ROOT, 'apps-script/Rules.gs'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, 'fake_api.js'), 'utf8') });
+  // rules.js and the fake API load before app.js runs (app.js waits for DOMContentLoaded).
+  await page.addInitScript({ content: fs.readFileSync(path.join(ROOT, 'worker/src/rules.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, 'fake_api.js'), 'utf8') });
   await page.goto(base);
   page.errors = errors;
   return page;
@@ -265,6 +265,34 @@ test('planner adds and removes crew', async () => {
   assert.equal(await page.evaluate(() => window.LAST_CONFIRM), 'Remove VIPER from the crew? VIPER is on 1 upcoming day and will be taken off it.');
   assert.doesNotMatch(await page.locator('#crew').innerText(), /VIPER/);
   assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('planner reads the activity log, newest first, and loads older lines', async () => {
+  const page = await open();
+  await page.locator('#tab-planner').click();
+  assert.equal(await calls(page, 'log'), 0, 'nothing is loaded until asked');
+  await page.getByRole('button', { name: 'Show log' }).click();
+  await page.locator('#log .logrow').first().waitFor();
+  assert.equal(await page.locator('#log .logrow').count(), 50);
+  assert.match(await page.locator('#log .logrow').first().innerText(), /RAVEN not delivered/);
+  assert.equal(await page.locator('#log .logrow.failed').count(), 1);
+  assert.deepEqual(await page.locator('#log .logday').allInnerTexts(), ['Today', 'Monday 30 Nov']);
+  await page.getByRole('button', { name: 'Show older' }).click();
+  await page.locator('#log .logrow').nth(54).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Show older' }).count(), 0, 'no more to load');
+  assert.match(await page.locator('#log .logrow').last().innerText(), /picked line 1$/);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no sideways scroll');
+  await page.getByRole('button', { name: 'Hide' }).click();
+  assert.equal(await page.locator('#log').count(), 0);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('crew without admin rights see no log', async () => {
+  const page = await open({ admin: false });
+  await page.getByText('Signed in as MAMBA').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Show log' }).count(), 0);
   await page.close();
 });
 

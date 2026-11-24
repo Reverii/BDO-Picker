@@ -132,3 +132,8 @@ textarea { width: 100%; resize: vertical; }
 .preview { white-space: pre-wrap; background: var(--bg); border-radius: 10px; padding: 12px; font-size: 14px; line-height: 1.5; }
 .pill.quiet { border-color: var(--line); color: var(--accent); }
 .help { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
+
+.logday { font-size: 13px; font-weight: 700; color: var(--hint); padding: 12px 0 4px; }
+.logrow { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.logrow .time { color: var(--hint); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.logrow.failed .grow { color: var(--danger); }

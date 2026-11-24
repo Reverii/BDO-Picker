@@ -1,4 +1,4 @@
-// BDO Picker Mini App page. Talks only to the Apps Script web app in config.js.
+// BDO Picker Mini App page. Talks only to the BDO Picker server (Cloudflare Worker) in config.js.
 (function () {
   'use strict';
 
@@ -15,7 +15,8 @@
     msg: '', msgKind: 'ok', busy: false, pending: '',
     admins: [], linked: [], lastChange: '', addCs: '',
     crewAll: [], psel: '', assignCs: '',
-    crewList: [], newCrew: '', groupTitle: '', note: '', preview: ''
+    crewList: [], newCrew: '', groupTitle: '', note: '', preview: '',
+    logOpen: false, log: [], logMore: false, logLoading: false, logErr: ''
   };
 
   // ---------- small helpers ----------
@@ -63,7 +64,7 @@
     if (window.BDO_FAKE_API) {
       request = window.BDO_FAKE_API(action, args);
     } else {
-      // No custom headers: keeps this a "simple" request that Apps Script accepts from another site.
+      // No custom headers: a "simple" request, so the browser doesn't need to ask the server first.
       request = fetch(window.BDO_CONFIG.apiUrl, {
         method: 'POST',
         body: JSON.stringify(Object.assign({ initData: tg.initData, action: action }, args))
@@ -113,7 +114,7 @@
     applyTheme();
     if (!window.BDO_FAKE_API && (!window.BDO_CONFIG || /PASTE_/.test(window.BDO_CONFIG.apiUrl))) {
       S.screen = 'fatal';
-      S.fatal = "BDO Picker isn't set up yet: the web app address is missing from config.js.";
+      S.fatal = "BDO Picker isn't set up yet: the server address is missing from config.js.";
       return render();
     }
     S.month = todayStr().slice(0, 7);
@@ -313,6 +314,14 @@
         });
       });
     },
+    logToggle: function () {
+      S.logOpen = !S.logOpen;
+      if (!S.logOpen) return render();
+      S.log = [];
+      S.logMore = false;
+      loadLog();
+    },
+    logMore: function () { loadLog(); },
     link: function () {
       if (!S.pickCs) return;
       busy(function () {
@@ -346,6 +355,19 @@
       });
     }
   };
+
+  // Reads the log, newest first. Each call gets the next page of older lines.
+  function loadLog() {
+    if (S.logLoading) return;
+    S.logLoading = true;
+    S.logErr = '';
+    render();
+    var last = S.log[S.log.length - 1];
+    api('log', last ? { before: last.id } : {}).then(function (res) {
+      S.log = S.log.concat(res.entries);
+      S.logMore = res.more;
+    }).catch(function (e) { S.logErr = e.message; }).then(function () { S.logLoading = false; render(); });
+  }
 
   function openHelp() {
     var url = new URL('guide.html', location.href).href;
@@ -542,7 +564,35 @@
     }).join('');
     return counts + cal + dayPanel() + status() + groupCard() +
       '<section class="card list"><span class="label">Who has what</span>' + (who || '<div class="hint">No BDO days this month yet.</div>') + '</section>' +
-      crewCard() + admins();
+      crewCard() + admins() + logCard();
+  }
+
+  // Planner's view of the log: every pick, drop and change, grouped by day, newest first.
+  function logCard() {
+    var head = '<div class="qi"><span class="label grow" style="margin:0">Activity log</span>' +
+      '<button type="button" class="pill quiet" data-act="logToggle" aria-expanded="' + S.logOpen + '" aria-controls="log">' + (S.logOpen ? 'Hide' : 'Show log') + '</button></div>';
+    if (!S.logOpen) {
+      return '<section class="card">' + head + '<p class="hint" style="font-size:13px;margin:6px 0 0">Every pick, drop and change, with who and when.</p></section>';
+    }
+    var html = '';
+    var lastDay = '';
+    S.log.forEach(function (e) {
+      var day = String(e.at).slice(0, 10);
+      if (day !== lastDay) {
+        lastDay = day;
+        html += '<div class="logday">' + (/^\d{4}-\d{2}-\d{2}$/.test(day) ? (day === todayStr() ? 'Today' : longDay(day)) : esc(day)) + '</div>';
+      }
+      var failed = / not delivered$/.test(e.what);
+      html += '<div class="logrow' + (failed ? ' failed' : '') + '"><span class="time">' + esc(String(e.at).slice(11, 16)) + '</span>' +
+        '<span class="grow"><b>' + esc(e.who) + '</b> ' + esc(e.what) + '</span></div>';
+    });
+    if (!S.log.length && !S.logLoading && !S.logErr) html = '<p class="hint">Nothing has happened yet.</p>';
+    var foot = S.logLoading ? '<p class="hint" style="margin:10px 0 0">Loading…</p>'
+      : S.logErr ? '<p class="status err" style="margin:10px 0 0">' + esc(S.logErr) + '</p><button type="button" class="btn ghost" style="margin-top:8px" data-act="logMore">Try again</button>'
+      : S.logMore ? '<button type="button" class="btn ghost" style="margin-top:10px;width:100%" data-act="logMore">Show older</button>' : '';
+    var note = S.log.some(function (e) { return / not delivered$/.test(e.what); })
+      ? '<p class="hint" style="font-size:12px;margin:8px 0 0">"Not delivered": that person needs to open the bot\'s chat once and tap Start.</p>' : '';
+    return '<section class="card">' + head + '<div id="log" aria-live="polite">' + html + '</div>' + foot + note + '</section>';
   }
 
   var ICON_X = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';

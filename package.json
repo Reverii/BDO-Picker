@@ -4,6 +4,6 @@
   "private": true,
   "description": "Telegram Mini App for picking BDO duty dates",
   "scripts": {
-    "test": "node --test \"tests/*.test.js\""
+    "test": "node --disable-warning=ExperimentalWarning --test \"tests/*.test.js\""
   }
 }

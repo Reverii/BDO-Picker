@@ -1,5 +1,5 @@
-// BDO Picker rules. Plain JavaScript: no Apps Script services here, so Node tests and the
-// page's test fake can run it as-is. Every function returns new objects; inputs are never changed.
+// BDO Picker rules. Plain JavaScript with no platform services, so the Worker, the Node tests and
+// the page's test fake all run it as-is. Every function returns new objects; inputs are never changed.
 
 class RuleError extends Error {
   constructor(code, message) {
@@ -196,4 +196,12 @@ function announceText(month, days, note) {
     lines.join('\n') + '\n\nFirst come, first served. Pick yours in BDO Picker.';
   if (note && String(note).trim()) text += '\n\n' + String(note).trim();
   return text;
+}
+
+// The Worker imports this file as a module; the page tests load it as a plain script.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    RuleError, normCall, fmtDay, pickDay, dropDay, setDay, linkCallsign, addAdmin, removeSelf,
+    assignDay, removeFromDay, addCrew, removeCrewMember, announceText, MONTH_NAMES,
+  };
 }
