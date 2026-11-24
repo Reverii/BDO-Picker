@@ -10,7 +10,7 @@ APP_NAME = "pick"
 [[d1_databases]]
 binding = "DB"
 database_name = "bdo-picker"
-database_id = "PASTE_DATABASE_ID_HERE"
+database_id = "528d4f8a-6978-4058-a0dd-cf2d656ac98c"
 migrations_dir = "migrations"
 
 [[durable_objects.bindings]]
