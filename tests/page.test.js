@@ -34,8 +34,8 @@ async function open({ initData = 'test', linked = true, admin = true, delay = 0,
     window.Telegram = { WebApp: { initData, themeParams: {}, ready() {}, expand() {}, requestWriteAccess(cb) { cb(true); }, showConfirm(msg, cb) { window.LAST_CONFIRM = msg; cb(true); }, openLink(url) { window.OPENED = url; } } };
     if (refreshMs) window.BDO_REFRESH_MS = refreshMs;
   }, { initData, linked, admin, delay, refreshMs });
-  // Rules.gs and the fake API load before app.js runs (app.js waits for DOMContentLoaded).
-  await page.addInitScript({ content: fs.readFileSync(path.join(ROOT, 'apps-script/Rules.gs'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, 'fake_api.js'), 'utf8') });
+  // rules.js and the fake API load before app.js runs (app.js waits for DOMContentLoaded).
+  await page.addInitScript({ content: fs.readFileSync(path.join(ROOT, 'worker/src/rules.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, 'fake_api.js'), 'utf8') });
   await page.goto(base);
   page.errors = errors;
   return page;

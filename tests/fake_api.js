@@ -1,5 +1,5 @@
-// Browser-side stand-in for the Apps Script web app, for the page tests.
-// Needs Rules.gs loaded first. Options come from window.FAKE_OPTS: { linked, admin, delay }.
+// Browser-side stand-in for the Worker, for the page tests.
+// Needs worker/src/rules.js loaded first. Options come from window.FAKE_OPTS: { linked, admin, delay }.
 (function () {
   var o = window.FAKE_OPTS || {};
   var ME_ID = '3';

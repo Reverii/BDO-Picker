@@ -1,0 +1,25 @@
+# Cloudflare settings for BDO Picker. See README.md, "Setting it up", step 2.
+name = "bdo-picker"
+main = "src/index.mjs"
+compatibility_date = "2025-09-01"
+
+[vars]
+# The Mini App short name you gave @BotFather (/newapp). Used for the Open BDO Picker button.
+APP_NAME = "pick"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bdo-picker"
+database_id = "PASTE_DATABASE_ID_HERE"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "PICKER"
+class_name = "PickerObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PickerObject"]
+
+[observability]
+enabled = true

@@ -22,52 +22,88 @@ Where things live:
 | Part | Where |
 |---|---|
 | The page people see | GitHub Pages (this repo: `index.html`, `app.js`, `app.css`, `config.js`) |
-| The data | your Google Sheet (tabs Days, Crew, Admins, Log) |
-| The go-between | a Google Apps Script attached to the Sheet (`apps-script/`) |
-| Who's who | Telegram: the bot link tells the script which Telegram account tapped it |
+| The server | a Cloudflare Worker (`worker/`) |
+| The data | a Cloudflare D1 database (tables days, crew, admins, log, settings) |
+| Who's who | Telegram: the bot link tells the server which Telegram account tapped it |
 
-The repo is public and holds no names or dates. Callsigns and Telegram IDs stay in your Sheet.
+The repo is public and holds no names or dates. Callsigns and Telegram IDs stay in your D1 database.
 
 ## Setting it up (about 30 minutes, once)
+
+You need a free Cloudflare account and Node.js 20 or newer on your computer.
 
 ### 1. Make the Telegram bot
 
 1. In Telegram, open **@BotFather** (blue tick) and send `/newbot`.
 2. Give it a name (e.g. `BDO Picker`) and a username ending in `bot` (e.g. `sqn121_bdo_bot`).
 3. BotFather sends you a **token** like `123456:ABC-...`. Treat it like a password: don't post it in any
-   chat or put it on GitHub. You'll paste it into the Google script in step 2.
+   chat or put it on GitHub. You'll give it to Cloudflare in step 2.
 
-### 2. Make the Google Sheet and the script
+### 2. Put the server on Cloudflare
 
-1. Go to [sheets.new](https://sheets.new) and name the sheet, e.g. `BDO Picker`.
-2. In the Sheet: **Extensions > Apps Script**. A script editor opens.
-3. In the editor, click **Project Settings** (the gear) and tick **Show "appsscript.json" manifest file
-   in editor**. Back in **Editor** (`< >`):
-   - Open `appsscript.json` and replace everything in it with this repo's
-     [`apps-script/appsscript.json`](apps-script/appsscript.json).
-   - Rename `Code.gs` if needed and replace its contents with [`apps-script/Code.gs`](apps-script/Code.gs).
-   - Click **+ > Script**, name it `Rules`, and paste [`apps-script/Rules.gs`](apps-script/Rules.gs).
-   - Click **+ > Script**, name it `Auth`, and paste [`apps-script/Auth.gs`](apps-script/Auth.gs).
-   - Press **Save** (the disk icon).
-4. **Project Settings > Script Properties > Add script property**: Property `BOT_TOKEN`, Value = the
-   token from step 1. Save.
-5. Back in the editor, open `Code.gs`, choose **setup** in the function list at the top and press **Run**.
-   Google asks for permission the first time: choose your account, then **Advanced > Go to BDO Picker
-   (unsafe)** (it says "unsafe" only because you wrote the script yourself), then **Allow**. The Sheet
-   now has four tabs: **Days, Crew, Admins, Log**.
-6. Fill in the Sheet:
-   - **Crew** tab, column A: every callsign that can pick BDO dates, one per row. Leave columns B and C
-     empty; they fill in when people link their Telegram account.
-   - **Admins** tab, column A: your own callsign.
-7. **Deploy > New deployment**. Click the gear next to "Select type" and choose **Web app**. Set
-   **Execute as: Me** and **Who has access: Anyone**. Press **Deploy** and copy the **Web app URL**
-   (it ends in `/exec`).
-8. Check it: open that URL in a browser. It should say `BDO Picker is running.`
+In a terminal, in this repo's `worker` folder:
+
+1. Install the tools and sign in to Cloudflare (a browser window opens):
+
+   ```bash
+   npm install
+   ```
+
+   ```bash
+   npx wrangler login
+   ```
+
+2. Make the database. `apac` keeps it near Singapore:
+
+   ```bash
+   npx wrangler d1 create bdo-picker --location=apac
+   ```
+
+   It prints a `database_id`. Open `worker/wrangler.toml` and paste it in place of
+   `PASTE_DATABASE_ID_HERE` (keep the quotes).
+3. Give the server the bot token. It asks you to paste it; it is stored encrypted on Cloudflare, not in
+   the repo:
+
+   ```bash
+   npx wrangler secret put BOT_TOKEN
+   ```
+
+4. Make the tables and put the server live:
+
+   ```bash
+   npm run deploy
+   ```
+
+   It prints the server's address, like `https://bdo-picker.<your-name>.workers.dev`. Open it in a
+   browser: it should say `BDO Picker is running.`
+5. Add the crew and yourself as the first admin. Either in the Cloudflare dashboard (**Storage &
+   Databases > D1 > bdo-picker > Console**) or from the terminal. Change the callsigns to yours:
+
+   ```bash
+   npx wrangler d1 execute bdo-picker --remote --command "INSERT INTO crew (callsign) VALUES ('HAWK'), ('VIPER'), ('MAMBA'); INSERT INTO admins (callsign) VALUES ('MAMBA');"
+   ```
+
+   After this you can add and remove crew from the **Planner** tab in the app.
+
+**Coming from the Google Sheet version?** Instead of step 5, bring your data across: in the Sheet,
+for each of the tabs Days, Crew, Admins and Log, choose **File > Download > Comma-separated values**
+and put the four files in one folder. Then, in `worker`:
+
+```bash
+node scripts/import-sheet.mjs ~/Downloads/bdo-csv > import.sql
+```
+
+```bash
+npx wrangler d1 execute bdo-picker --remote --file=import.sql
+```
+
+Do this once, before anyone uses the new address. The group connection isn't in the Sheet, so tap
+**Find group** on the Planner tab again afterwards (step 6).
 
 ### 3. Put the page on GitHub Pages
 
-1. On GitHub, open this repo's `config.js`, press the pencil (edit), replace
-   `PASTE_YOUR_APPS_SCRIPT_URL_HERE` with the URL from step 2.7 (keep the quotes), and commit to `main`.
+1. On GitHub, open this repo's `config.js`, press the pencil (edit), put the server address from
+   step 2.4 in `apiUrl` (keep the quotes), and commit to `main`.
 2. **Settings > Pages**: Source **Deploy from a branch**, Branch **main**, folder **/ (root)**, **Save**.
 3. After a minute or two the page is at `https://reverii.github.io/BDO-Picker/`. Opened in a normal
    browser it only says "Open BDO Picker from the Telegram link." That's expected: it needs Telegram to
@@ -98,33 +134,48 @@ The repo is public and holds no names or dates. Callsigns and Telegram IDs stay 
 4. From then on, **Preview message** and **Post to group** on the Planner tab post the month on screen.
 
 The **Open BDO Picker** button in the post points to `t.me/<your bot>/pick`. If you gave the Mini App a short name
-other than `pick` in step 4, add a script property `APP_NAME` with that short name.
+other than `pick` in step 4, change `APP_NAME` in `worker/wrangler.toml` to that short name and run
+`npm run deploy` again.
 
 ## Looking after it
 
-- **Changing the crew list:** use the **Crew** section on the Planner tab (or edit the **Crew** tab).
-- **Someone linked the wrong callsign:** in **Crew**, clear their Telegram ID and username (columns B
-  and C). They pick again the next time they open BDO Picker.
-- **Admins:** use the Planner tab, or edit the **Admins** tab directly if you ever get locked out.
-- **Fixing a date by hand:** the **Days** tab has one row per BDO date: Date (`YYYY-MM-DD`), BDO and Queue
-  (callsigns separated by commas, in order).
-- **Someone didn't get a bot message:** the Log shows `message to X not delivered`. They need to open the
+The data is in the D1 database. To look at it or fix something by hand, use the Cloudflare dashboard
+(**Storage & Databases > D1 > bdo-picker**: **Tables** to browse, **Console** to run SQL) or
+`npx wrangler d1 execute bdo-picker --remote --command "..."` from `worker`.
+
+- **Changing the crew list:** use the **Crew** section on the Planner tab.
+- **Someone linked the wrong callsign:** clear their Telegram ID and username. They pick again the next
+  time they open BDO Picker:
+  `UPDATE crew SET telegram_id = '', username = '' WHERE callsign = 'HAWK';`
+- **Admins:** use the Planner tab. If you're ever locked out:
+  `INSERT INTO admins (callsign) VALUES ('MAMBA');`
+- **Fixing a date by hand:** the Planner tab can put people on a day or take them off. The **days**
+  table has one row per BDO date: `date` (`YYYY-MM-DD`), `bdo`, and `queue` (callsigns separated by
+  commas, in order).
+- **Seeing what happened:** `SELECT * FROM log ORDER BY id DESC LIMIT 50;`
+- **Someone didn't get a bot message:** the log shows `message to X not delivered`. They need to open the
   bot's chat once and press **Start**.
-- **Updating the script after a change in this repo:** paste the new files into the script editor, then
-  **Deploy > Manage deployments > pencil > Version: New version > Deploy**. The URL stays the same, so
-  `config.js` doesn't change.
+- **Updating the server after a change in this repo:** in `worker`, run `npm run deploy`. It applies any
+  new database changes first. The address stays the same, so `config.js` doesn't change.
+- **Server errors:** Cloudflare dashboard > **Workers & Pages > bdo-picker > Logs**.
 
 ## For developers
 
-No build step. Tests need Node 22 and Playwright with Chromium:
+The page has no build step. Tests need Node 22 and Playwright with Chromium:
 
 ```bash
 npm test
 ```
 
-- `apps-script/Rules.gs`: the rules (pick, queue, drop, days, admins), plain JavaScript.
-- `apps-script/Auth.gs`: checks Telegram's signature on each request.
-- `apps-script/Code.gs`: the web app: request handling, Sheet reads and writes, bot messages.
-- `tests/`: rules, signature, script (against stand-ins for Google's services) and the page (Playwright,
-  against an in-browser stand-in for the script).
-- Design and plan: `docs/superpowers/`.
+- `worker/src/rules.js`: the rules (pick, queue, drop, days, admins), plain JavaScript. The page tests
+  load it too.
+- `worker/src/auth.mjs`: checks Telegram's signature on each request.
+- `worker/src/picker.mjs`: request handling, database reads and writes, bot messages.
+- `worker/src/index.mjs`: the Worker. It sends every request to one Durable Object, so changes happen
+  one at a time (two people taking the same day can't both become BDO).
+- `worker/migrations/`: the database tables.
+- `tests/`: rules, signature, server (against D1 stand-in on Node's built-in SQLite) and the page
+  (Playwright, against an in-browser stand-in for the server).
+- Try the server locally: in `worker`, put `BOT_TOKEN="..."` in `.dev.vars`, then
+  `npx wrangler d1 migrations apply bdo-picker --local` and `npm run dev`.
+- Design and plan: `docs/superpowers/` (written for the earlier Google Sheet version).

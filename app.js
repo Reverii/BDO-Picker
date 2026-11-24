@@ -1,4 +1,4 @@
-// BDO Picker Mini App page. Talks only to the Apps Script web app in config.js.
+// BDO Picker Mini App page. Talks only to the BDO Picker server (Cloudflare Worker) in config.js.
 (function () {
   'use strict';
 
@@ -63,7 +63,7 @@
     if (window.BDO_FAKE_API) {
       request = window.BDO_FAKE_API(action, args);
     } else {
-      // No custom headers: keeps this a "simple" request that Apps Script accepts from another site.
+      // No custom headers: a "simple" request, so the browser doesn't need to ask the server first.
       request = fetch(window.BDO_CONFIG.apiUrl, {
         method: 'POST',
         body: JSON.stringify(Object.assign({ initData: tg.initData, action: action }, args))
@@ -113,7 +113,7 @@
     applyTheme();
     if (!window.BDO_FAKE_API && (!window.BDO_CONFIG || /PASTE_/.test(window.BDO_CONFIG.apiUrl))) {
       S.screen = 'fatal';
-      S.fatal = "BDO Picker isn't set up yet: the web app address is missing from config.js.";
+      S.fatal = "BDO Picker isn't set up yet: the server address is missing from config.js.";
       return render();
     }
     S.month = todayStr().slice(0, 7);

@@ -1,8 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadGs } = require('./load_gs');
 
-const R = loadGs(['Rules.gs']);
+const R = require('../worker/src/rules.js');
 const today = '2026-12-01';
 const open = (date = '2026-12-05') => ({ date, bdo: '', queue: [] });
 const code = (fn) => { try { fn(); } catch (e) { return e.code; } return 'NO ERROR'; };
