@@ -71,7 +71,11 @@
       }).then(function (r) { return r.json(); });
     }
     return request.then(function (res) {
-      if (!res || !res.ok) throw new Error((res && res.error) || 'Something went wrong. Try again in a moment.');
+      if (!res || !res.ok) {
+        var err = new Error((res && res.error) || 'Something went wrong. Try again in a moment.');
+        err.code = res && res.code;
+        throw err;
+      }
       return res;
     }, function () {
       throw new Error("Can't reach BDO Picker. Check your connection and try again.");
@@ -98,6 +102,17 @@
 
   function say(kind, text) { S.msgKind = kind; S.msg = text; }
 
+  // Telegram's sign-in for this open copy of the app is over a day old: every request will fail
+  // until it is reopened, so swap the page for a screen that says so.
+  function expired(e) {
+    if (!e || e.code !== 'EXPIRED') return false;
+    S.screen = 'expired';
+    S.fatal = e.message;
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    render();
+    return true;
+  }
+
   // Runs one request at a time; the buttons are disabled while it is in flight.
   // saves counts every save started, so a refresh that asked before a save can tell its answer is stale.
   var saves = 0;
@@ -106,7 +121,7 @@
     S.busy = true;
     saves++;
     render();
-    return work().catch(function (e) { say('err', e.message); }).then(function () { S.busy = false; render(); });
+    return work().catch(function (e) { if (!expired(e)) say('err', e.message); }).then(function () { S.busy = false; render(); });
   }
 
   // ---------- loading ----------
@@ -122,7 +137,7 @@
     }
     S.month = todayStr().slice(0, 7);
     // One request gets everything: who you are, all BDO days from this month on, and the admin list.
-    api('init').then(applyInit).catch(function (e) { S.screen = 'fatal'; S.fatal = e.message; render(); });
+    api('init').then(applyInit).catch(function (e) { if (expired(e)) return; S.screen = 'fatal'; S.fatal = e.message; render(); });
   }
 
   function applyInit(d) {
@@ -176,7 +191,7 @@
       if (!dayOf(S.sel)) S.sel = defaultSel();
       if (!dayOf(S.psel)) S.psel = '';
       if (!typing()) render();
-    }).catch(function () { /* try again next time */ }).then(function () { refreshing = false; });
+    }).catch(function (e) { expired(e); /* otherwise try again next time */ }).then(function () { refreshing = false; });
   }
 
   function startRefresh() {
@@ -346,6 +361,7 @@
         });
       });
     },
+    closeApp: function () { try { tg.close(); } catch (e) { /* nothing more to do */ } },
     removeMe: function () {
       ask("Remove yourself as admin? You won't see the Planner tab any more.").then(function (ok) {
         if (!ok) return;
@@ -371,7 +387,7 @@
     api('log', last ? { before: last.id } : {}).then(function (res) {
       S.log = S.log.concat(res.entries);
       S.logMore = res.more;
-    }).catch(function (e) { S.logErr = e.message; }).then(function () { S.logLoading = false; render(); });
+    }).catch(function (e) { if (!expired(e)) S.logErr = e.message; }).then(function () { S.logLoading = false; render(); });
   }
 
   function openHelp() {
@@ -410,6 +426,7 @@
     var html;
     if (S.screen === 'outside') html = '<p class="center">Open BDO Picker from the Telegram link.</p>';
     else if (S.screen === 'fatal') html = '<p class="center">' + esc(S.fatal) + '</p>';
+    else if (S.screen === 'expired') html = expiredScreen();
     else if (S.screen === 'welcome') html = welcome();
     else if (S.screen === 'main') html = main();
     else html = '<p class="center hint">Loading…</p>';
@@ -421,6 +438,12 @@
   function status() {
     if (!S.msg) return '';
     return '<div id="status" role="status" class="status ' + S.msgKind + '">' + esc(S.msg) + '</div>';
+  }
+
+  function expiredScreen() {
+    var canClose = tg && tg.close;
+    return '<div class="center"><p>' + esc(S.fatal) + '</p>' +
+      (canClose ? '<button type="button" class="btn" data-act="closeApp">Close BDO Picker</button>' : '') + '</div>';
   }
 
   function welcome() {

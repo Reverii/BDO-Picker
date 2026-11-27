@@ -35,11 +35,15 @@ test('empty string is rejected', async () => {
   assert.equal(await code(verifyInitData(undefined, TOKEN, NOW)), 'AUTH');
 });
 
-test('initData older than 24 hours is rejected', async () => {
-  assert.equal(await code(verifyInitData(initDataFor(user, TOKEN, NOW - 86401), TOKEN, NOW)), 'AUTH');
+test('initData older than 24 hours is rejected as expired', async () => {
+  assert.equal(await code(verifyInitData(initDataFor(user, TOKEN, NOW - 86401), TOKEN, NOW)), 'EXPIRED');
   assert.equal((await verifyInitData(initDataFor(user, TOKEN, NOW - 86000), TOKEN, NOW)).id, '5123');
 });
 
 test('auth error message tells the user what to do', async () => {
   try { await verifyInitData('', TOKEN, NOW); } catch (e) { assert.equal(e.message, 'Open BDO Picker from the Telegram link.'); }
+});
+
+test('old initData with a bad signature is AUTH, not EXPIRED', async () => {
+  assert.equal(await code(verifyInitData(initDataFor(user, 'other:token', NOW - 86401), TOKEN, NOW)), 'AUTH');
 });

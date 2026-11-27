@@ -528,3 +528,15 @@ test('setDay that changes nothing writes no log line and messages nobody', async
   assert.equal(log().length, before);
   assert.deepEqual(sent, []);
 });
+
+test('a day-old sign-in answers EXPIRED and changes nothing', async () => {
+  const { call, table } = start();
+  const before = JSON.stringify(table('days'));
+  const old = initDataFor({ id: 1, username: 'hawk' }, TOKEN, Math.floor(NOW.getTime() / 1000) - 86401);
+  const r = await call(1, 'pick', { date: '2026-12-05' }, old);
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'EXPIRED');
+  assert.match(r.error, /open it again from Telegram/);
+  assert.equal(JSON.stringify(table('days')), before);
+  assert.equal((await call(1, 'pick', { date: '2026-12-05' }, 'junk')).code, 'AUTH');
+});

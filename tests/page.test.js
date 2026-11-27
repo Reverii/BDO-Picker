@@ -31,7 +31,7 @@ async function open({ initData = 'test', linked = true, admin = true, delay = 0,
   await page.addInitScript(({ initData, linked, admin, delay, refreshMs }) => {
     window.BDO_TODAY = '2026-12-01';
     window.FAKE_OPTS = { linked, admin, delay };
-    window.Telegram = { WebApp: { initData, themeParams: {}, ready() {}, expand() {}, requestWriteAccess(cb) { cb(true); }, showConfirm(msg, cb) { window.LAST_CONFIRM = msg; cb(true); }, openLink(url) { window.OPENED = url; } } };
+    window.Telegram = { WebApp: { initData, themeParams: {}, ready() {}, expand() {}, requestWriteAccess(cb) { cb(true); }, showConfirm(msg, cb) { window.LAST_CONFIRM = msg; cb(true); }, openLink(url) { window.OPENED = url; }, close() { window.CLOSED = true; } } };
     if (refreshMs) window.BDO_REFRESH_MS = refreshMs;
   }, { initData, linked, admin, delay, refreshMs });
   // rules.js and the fake API load before app.js runs (app.js waits for DOMContentLoaded).
@@ -382,6 +382,29 @@ test('a refresh that started before a pick does not undo it on screen', async ()
   await page.waitForTimeout(500); // the late refresh has landed by now
   assert.match(await page.locator('#panel').innerText(), /MAMBA/);
   assert.equal(await page.locator('#action').innerText(), 'Drop this day');
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('a sign-in that ran out while open shows the reopen screen on the next refresh', async () => {
+  const page = await open({ refreshMs: 150 });
+  await page.locator('#action').waitFor();
+  await page.evaluate(() => { window.FAKE.expired = true; });
+  await page.getByText('open it again from Telegram').waitFor();
+  assert.equal(await page.locator('#action').count(), 0, 'the calendar is gone');
+  await page.getByRole('button', { name: 'Close BDO Picker' }).click();
+  assert.equal(await page.evaluate(() => window.CLOSED), true);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('a tap after the sign-in ran out shows the reopen screen', async () => {
+  const page = await open();
+  await page.locator('[data-date="2026-12-12"]').click();
+  await page.evaluate(() => { window.FAKE.expired = true; });
+  await page.locator('#action').click();
+  await page.getByText('open it again from Telegram').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Close BDO Picker' }).count(), 1);
   assert.deepEqual(page.errors, []);
   await page.close();
 });

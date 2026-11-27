@@ -25,6 +25,7 @@
   for (var n = 1; n <= 55; n++) {
     state.log.push({ id: n, at: (n <= 30 ? '2026-11-30 ' : '2026-12-01 ') + (n % 24 < 10 ? '0' : '') + (n % 24) + ':00', who: n % 2 ? 'HAWK' : 'VIPER', what: n === 55 ? 'message to RAVEN not delivered' : 'picked line ' + n });
   }
+  var EXPIRED_MSG = 'BDO Picker has been open for more than a day. Close it and open it again from Telegram.';
   var today = window.BDO_TODAY || '2026-12-01';
   window.FAKE = { calls: [], state: state };
 
@@ -51,6 +52,7 @@
     throw new RuleError('NOT_SET', "The planner hasn't set that day as a BDO day.");
   }
   function run(action, args) {
+    if (window.FAKE.expired) throw new RuleError('EXPIRED', EXPIRED_MSG);
     if (action === 'init') return init();
     if (action === 'whoami') return whoami();
     if (action === 'link') { state.crew = linkCallsign(state.crew, ME_ID, 'mamba_ops', args.callsign); return init(); }
@@ -102,7 +104,7 @@
     return new Promise(function (resolve) {
       setTimeout(function () {
         try { var data = run(action, args || {}); data.ok = true; resolve(JSON.parse(JSON.stringify(data))); }
-        catch (e) { resolve({ ok: false, error: e.message }); }
+        catch (e) { resolve({ ok: false, error: e.message, code: e.code }); }
       }, o.delay || 0);
     });
   };

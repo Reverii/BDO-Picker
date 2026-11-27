@@ -45,7 +45,11 @@ export async function verifyInitData(initData, botToken, nowSec, maxAgeSec = 864
   const secret = await hmac('WebAppData', botToken);
   if (!sameText(toHex(await hmac(secret, dataCheckString)), hash.toLowerCase())) throw authFail();
   const authDate = Number(fields.auth_date);
-  if (!authDate || nowSec - authDate > maxAgeSec) throw authFail();
+  if (!authDate) throw authFail();
+  // Signed by Telegram but too old: the app was left open. Reopening it gets a fresh sign-in.
+  if (nowSec - authDate > maxAgeSec) {
+    throw new R.RuleError('EXPIRED', 'BDO Picker has been open for more than a day. Close it and open it again from Telegram.');
+  }
   let user;
   try { user = JSON.parse(fields.user); } catch (e) { throw authFail(); }
   if (!user || !user.id) throw authFail();

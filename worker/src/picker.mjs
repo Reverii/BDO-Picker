@@ -49,7 +49,7 @@ export class Picker {
       out.ok = true;
     } catch (err) {
       if (err instanceof RuleError) {
-        out = { ok: false, error: err.message };
+        out = { ok: false, error: err.message, code: err.code };
       } else {
         console.error(err && err.stack ? err.stack : err);
         out = { ok: false, error: 'Something went wrong. Try again in a moment.' };
