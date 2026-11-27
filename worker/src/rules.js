@@ -20,8 +20,16 @@ function copyDay(day) {
   return { date: day.date, bdo: normCall(day.bdo), queue: (day.queue || []).map(normCall) };
 }
 
+// A real calendar date as 'YYYY-MM-DD' text (not 2027-02-30 or 2026-13-01).
+function realDate(date) {
+  if (typeof date !== 'string' || !DATE_RE.test(date)) return false;
+  var p = date.split('-').map(Number);
+  var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  return d.getUTCFullYear() === p[0] && d.getUTCMonth() === p[1] - 1 && d.getUTCDate() === p[2];
+}
+
 function checkDate(date, today) {
-  if (!DATE_RE.test(String(date))) throw new RuleError('BAD_DATE', 'That date is not valid.');
+  if (!realDate(date)) throw new RuleError('BAD_DATE', 'That date is not valid.');
   if (date < today) throw new RuleError('PAST', 'That day has already passed.');
 }
 
@@ -63,6 +71,7 @@ function dropDay(day, me, today) {
 }
 
 // Planner turns a date on (adds an open day) or off (removes it, returning what it held).
+// changed is false when the day was already on (or already off).
 function setDay(days, date, on, today) {
   checkDate(date, today);
   var list = days.map(copyDay);
@@ -72,7 +81,7 @@ function setDay(days, date, on, today) {
   if (on && at < 0) list.push({ date: date, bdo: '', queue: [] });
   if (!on && at >= 0) removed = list.splice(at, 1)[0];
   list.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
-  return { days: list, removed: removed };
+  return { days: list, removed: removed, changed: (on && at < 0) || !!removed };
 }
 
 // crew rows: { callsign, telegramId, username }

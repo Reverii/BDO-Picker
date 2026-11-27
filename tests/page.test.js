@@ -363,3 +363,25 @@ test('help opens the guide', async () => {
   assert.equal(await first.getByRole('link', { name: 'Help' }).count(), 1);
   await first.close();
 });
+
+test('a refresh that started before a pick does not undo it on screen', async () => {
+  const page = await open({ admin: false });
+  await page.locator('#action').waitFor();
+  // The refresh answers with the days as they were when it asked, but arrives after the pick.
+  await page.evaluate(() => {
+    const real = window.BDO_FAKE_API;
+    window.BDO_FAKE_API = (a, args) => {
+      const p = real(a, args);
+      return a === 'init' ? p.then((r) => new Promise((ok) => setTimeout(() => ok(r), 300))) : p;
+    };
+  });
+  await page.locator('[data-date="2026-12-12"]').click();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.locator('#action').click();
+  await page.locator('#panel').getByText('MAMBA').waitFor();
+  await page.waitForTimeout(500); // the late refresh has landed by now
+  assert.match(await page.locator('#panel').innerText(), /MAMBA/);
+  assert.equal(await page.locator('#action').innerText(), 'Drop this day');
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

@@ -206,3 +206,23 @@ test('announceText lists the month', () => {
   assert.match(R.announceText('2027-01', days.slice(0, 1), ''), /^BDO dates for January 2027 are up\.\n\n1 day needs a BDO, 1 still open:\n• Sat 2 Jan: open\n\nFirst come/);
   assert.equal(code(() => R.announceText('2027-02', [], '')), 'NO_DAYS');
 });
+
+test('dates that are not on the calendar are refused', () => {
+  for (const date of ['2027-02-30', '2026-13-01', '2027-00-10', '2027-04-31', '2027-01-00']) {
+    assert.equal(code(() => R.setDay([], date, true, today)), 'BAD_DATE', date);
+    assert.equal(code(() => R.pickDay(open(date), 'MAMBA', today)), 'BAD_DATE', date);
+  }
+  assert.equal(R.setDay([], '2028-02-29', true, today).days.length, 1, 'leap day is real');
+});
+
+test('a non-text date is refused as a bad date', () => {
+  assert.equal(code(() => R.setDay([], ['2026-12-20'], true, today)), 'BAD_DATE');
+});
+
+test('setDay says whether anything changed', () => {
+  const days = [open('2026-12-05')];
+  assert.equal(R.setDay(days, '2026-12-05', true, today).changed, false);
+  assert.equal(R.setDay(days, '2026-12-25', false, today).changed, false);
+  assert.equal(R.setDay(days, '2026-12-25', true, today).changed, true);
+  assert.equal(R.setDay(days, '2026-12-05', false, today).changed, true);
+});

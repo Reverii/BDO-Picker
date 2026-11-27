@@ -295,6 +295,7 @@ class Job {
 
   async changeDay(me, date, on) {
     const r = setDay(await this.readDays(), date, on, this.today());
+    if (!r.changed) return { days: this.upcoming(r.days) }; // already that way: nothing to log or tell
     this.writeDays(r.days);
     const name = fmtDay(date);
     this.log(me, (on ? 'set ' : 'removed ') + name + ' as a BDO day');

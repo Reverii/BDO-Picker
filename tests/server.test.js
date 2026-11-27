@@ -515,3 +515,16 @@ test('only admins can read the log', async () => {
   assert.equal((await call(1, 'log')).error, 'Only the BDO planner can do that.');
   assert.equal((await call(77, 'log')).error, 'Pick your callsign first.');
 });
+
+test('setDay that changes nothing writes no log line and messages nobody', async () => {
+  const { call, log, sent } = start();
+  await call(1, 'pick', { date: '2026-12-05' });
+  const before = log().length;
+  const on = await call(3, 'setDay', { date: '2026-12-05', on: true });
+  const off = await call(3, 'setDay', { date: '2026-12-25', on: false });
+  assert.equal(on.ok, true);
+  assert.equal(off.ok, true);
+  assert.equal(on.days.length, 2);
+  assert.equal(log().length, before);
+  assert.deepEqual(sent, []);
+});

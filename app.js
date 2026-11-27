@@ -99,9 +99,12 @@
   function say(kind, text) { S.msgKind = kind; S.msg = text; }
 
   // Runs one request at a time; the buttons are disabled while it is in flight.
+  // saves counts every save started, so a refresh that asked before a save can tell its answer is stale.
+  var saves = 0;
   function busy(work) {
     if (S.busy) return Promise.resolve();
     S.busy = true;
+    saves++;
     render();
     return work().catch(function (e) { say('err', e.message); }).then(function () { S.busy = false; render(); });
   }
@@ -157,8 +160,10 @@
   function refresh() {
     if (S.screen !== 'main' || S.busy || refreshing || document.hidden || typing()) return;
     refreshing = true;
+    var asked = saves;
     api('init').then(function (d) {
-      if (S.busy || !d.linked) return;
+      // A save started after this refresh asked: its answer may be older than what's on screen.
+      if (S.busy || saves !== asked || !d.linked) return;
       S.days = d.days || [];
       S.isAdmin = !!d.isAdmin;
       if (!S.isAdmin) S.tab = 'pick';
